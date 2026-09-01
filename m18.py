@@ -245,6 +245,103 @@ data_id = [
 
 
 
+# Battery type code -> [capacity in Ah, human description].
+# Capacity is 0 where the type is not known, which is what stops
+# discharge cycles being derived from it.
+bat_lookup = {
+    "36": [1.5, "1.5Ah CP (5s1p 18650)"],
+    "37": [2, "2Ah CP (5s1p 18650)"],
+    "38": [3, "3Ah XC (5s2p 18650)"],
+    "39": [4, "4Ah XC (5s2p 18650)"],
+    "40": [5, "5Ah XC (5s2p 18650) (<= Dec 2018)"],
+    "165": [5, "5Ah XC (5s2p 18650) (Aug 2019 - Jun 2021)"],
+    "306": [5, "5Ah XC (5s2p 18650) (Feb 2021 - Jul 2023)"],                
+    "424": [5, "5Ah XC (5s2p 18650) (>= Sep 2023)"],
+    "46": [6, "6Ah XC (5s2p 18650)"],
+    "47": [9, "9Ah HD (5s3p 18650)"],                
+    "104": [3, "3Ah HO (5s1p 21700)"],
+    "150": [6, "5.5Ah HO (5s2p 21700) (EU only)"],
+    "106": [6, "6Ah HO (5s2p 21700)"],
+    "107": [8, "8Ah HO (5s2p 21700)"],
+    "108": [12, "12Ah HO (5s3p 21700)"],
+    "383": [8, "8Ah Forge (5s2p 21700 tabless)"],
+    "384": [12, "12Ah Forge (5s3p 21700 tabless)"]
+}
+
+
+# Registers health() reports on, keyed by the field they populate.
+# health() used to index the array returned by read_id() with hand-counted
+# offsets, so inserting or reordering a register silently shifted every
+# field after it. Looking up by register id removes that coupling.
+HEALTH_REGISTERS = {
+    "manufacture_date":        4,
+    "days_since_first_charge": 28,
+    "last_tool_use_date":      25,
+    "last_charge_date":        26,
+    "cell_voltages_mv":        12,
+    "temperature_c":           13,
+    "temperature_c_forge":     18,
+    "total_discharge_as":      29,
+    "discharged_to_empty":     39,
+    "times_overheated":        40,
+    "overcurrent_events":      41,
+    "low_voltage_events":      42,
+    "low_voltage_bounce":      43,
+    "charge_count_redlink":    33,
+    "charge_count_dumb":       32,
+    "charge_count_total":      31,
+    "total_charge_time":       35,
+    "time_idle_on_charger":    36,
+    "low_voltage_charges":     38,
+    "battery_date":            8,
+    "serial_raw":              2,
+}
+
+# Discharge histogram: 10-20A, 20-30A, ... 190-200A, then everything above.
+HEALTH_BUCKET_REGISTERS = tuple(range(44, 64))
+HEALTH_BUCKET_RANGES = tuple(
+    [f"{(i + 1) * 10}-{(i + 2) * 10}A" for i in range(19)] + ["> 200A"]
+)
+
+# A pack with no data answers with an all-ones word rather than an error,
+# so these have to be caught before anything derived from them is trusted.
+# See issue #28: they otherwise surface as 65535, negative day counts, and
+# charge times of 1193046:28:15 (that is 2**32 seconds).
+UINT_SENTINELS = (0xFFFF, 0xFFFFFFFF)
+HHMMSS_SENTINEL = "1193046:28:15"
+
+
+def health_field(value, valid=None):
+    """
+    One measurement plus whether it can be trusted.
+
+    Pass `valid` explicitly where validity depends on something other than
+    the value itself; otherwise it is inferred from the sentinels above.
+    The value is always passed through, valid or not, so a caller that
+    wants to show the raw reading still can.
+    """
+    if valid is None:
+        valid = (value is not None
+                 and value not in UINT_SENTINELS
+                 and value != HHMMSS_SENTINEL)
+    return {"value": value, "valid": valid}
+
+
+def date_valid(value):
+    """
+    A date register that was never written reads back as epoch zero, which
+    is a missing value rather than a real date in 1970.
+    """
+    return value is not None and value.timestamp() != 0
+
+
+def days_between(later, earlier):
+    """Whole days between two register dates, or None if either is missing."""
+    if later is None or earlier is None:
+        return None
+    return (later - earlier).days
+
+
 def print_debug_bytes(data):
     data_print = " ".join(f"{byte:02X}" for byte in data)
     print(f"DEBUG: ", data_print)
@@ -764,130 +861,179 @@ class M18:
             print(f"read_all_spreadsheet: Failed with error: {e}")
             
     
+    def health_data(self, force_refresh = True):
+        """
+        Read the registers health() reports on and return them as a dict.
+
+        Same wire traffic as health(). The difference is that the derived
+        values - imbalance, discharge cycles, total time on tool, the
+        histogram percentages - are returned rather than being formatted
+        into a print() and thrown away.
+
+        Each measurement is a dict of {"value": ..., "valid": bool}, where
+        "valid" is False if the register did not answer or answered with a
+        sentinel. Nothing here is rounded or formatted for display; that is
+        health()'s job.
+
+        Date fields hold datetime objects rather than strings, so a caller
+        writing this out as JSON needs an encoder for them
+        (json.dumps(..., default=str) is enough).
+
+        Returns None if the read failed outright.
+        """
+        reg_list = list(HEALTH_REGISTERS.values()) + list(HEALTH_BUCKET_REGISTERS)
+        raw = self.read_id(reg_list, force_refresh, "array")
+        if not raw:
+            return None
+        by_reg = dict(raw)
+
+        def value_of(name):
+            return by_reg.get(HEALTH_REGISTERS[name])
+
+        # Identity. The e-serial does NOT match the serial printed on the
+        # case; there is no register that returns the case serial.
+        serial_raw = value_of("serial_raw")
+        numbers = findall(r'\d+\.?\d*', serial_raw) if isinstance(serial_raw, str) else []
+        bat_type = numbers[0] if len(numbers) > 0 else None
+        e_serial = numbers[1] if len(numbers) > 1 else None
+        type_known = bat_type in bat_lookup
+        capacity_ah, description = bat_lookup.get(bat_type, [0, "Unknown"])
+
+        data = {
+            "battery_type": health_field(bat_type),
+            "battery_description": health_field(description, type_known),
+            "capacity_ah": health_field(capacity_ah, type_known),
+            "e_serial": health_field(e_serial),
+        }
+
+        # Dates. Day counts are measured against the battery's own clock,
+        # not the host's.
+        manufacture_date = value_of("manufacture_date")
+        battery_date = value_of("battery_date")
+        last_tool_use = value_of("last_tool_use_date")
+        last_charge = value_of("last_charge_date")
+        data["manufacture_date"] = health_field(manufacture_date, date_valid(manufacture_date))
+        data["battery_date"] = health_field(battery_date, date_valid(battery_date))
+        data["days_since_first_charge"] = health_field(value_of("days_since_first_charge"))
+        data["days_since_last_tool_use"] = health_field(
+            days_between(battery_date, last_tool_use),
+            date_valid(battery_date) and date_valid(last_tool_use))
+        data["days_since_last_charge"] = health_field(
+            days_between(battery_date, last_charge),
+            date_valid(battery_date) and date_valid(last_charge))
+
+        # Cells.
+        cells = value_of("cell_voltages_mv")
+        if isinstance(cells, list) and cells:
+            pack_voltage = sum(cells) / 1000
+            imbalance = max(cells) - min(cells)
+        else:
+            pack_voltage = imbalance = None
+        cells_valid = (isinstance(cells, list) and bool(cells)
+                       and all(v not in UINT_SENTINELS for v in cells))
+        data["cell_voltages_mv"] = health_field(cells, cells_valid)
+        data["pack_voltage_v"] = health_field(pack_voltage, cells_valid)
+        data["cell_imbalance_mv"] = health_field(imbalance, cells_valid)
+
+        # Only one of these answers on any given pack, depending on whether
+        # it is a Forge. Both are passed through untouched.
+        data["temperature_c"] = health_field(value_of("temperature_c"))
+        data["temperature_c_forge"] = health_field(value_of("temperature_c_forge"))
+
+        for name in ("charge_count_redlink", "charge_count_dumb", "charge_count_total",
+                     "total_charge_time", "time_idle_on_charger", "low_voltage_charges",
+                     "discharged_to_empty", "times_overheated", "overcurrent_events",
+                     "low_voltage_events", "low_voltage_bounce"):
+            data[name] = health_field(value_of(name))
+
+        # Discharge totals. Cycles need a known capacity to divide by.
+        discharge_as = value_of("total_discharge_as")
+        discharge_valid = discharge_as is not None and discharge_as not in UINT_SENTINELS
+        if isinstance(discharge_as, int):
+            total_discharge_ah = discharge_as / 3600
+            cycles = discharge_as / 3600 / capacity_ah if capacity_ah else None
+        else:
+            total_discharge_ah = cycles = None
+        data["total_discharge_as"] = health_field(discharge_as)
+        data["total_discharge_ah"] = health_field(total_discharge_ah, discharge_valid)
+        data["total_discharge_cycles"] = health_field(
+            cycles, type_known and cycles is not None and discharge_valid)
+
+        # Discharge histogram. tool_time is the sum of exactly these
+        # buckets, so when it is zero every bucket is zero too and the
+        # percentage is 0 rather than a division by zero (issue #47).
+        bucket_values = [by_reg.get(reg) for reg in HEALTH_BUCKET_REGISTERS]
+        tool_time = sum(v for v in bucket_values if isinstance(v, int))
+        buckets = []
+        for amp_range, value in zip(HEALTH_BUCKET_RANGES, bucket_values):
+            seconds = value if isinstance(value, int) else 0
+            buckets.append({
+                "range": amp_range,
+                "seconds": seconds,
+                "percent": round((seconds / tool_time) * 100) if tool_time else 0,
+                "valid": value is not None and value not in UINT_SENTINELS,
+            })
+        data["discharge_buckets"] = buckets
+        data["tool_time_s"] = health_field(
+            tool_time, all(bucket["valid"] for bucket in buckets))
+
+        return data
+
     def health(self, force_refresh = True):
         """
         Print labelled and formatted summary of key data.
         Some data is calculated, like 'imbalance' and 'total time on tool'
         Print simple histogram of discharge stats
         """
-        reg_list = [
-            4,  # 0.  Manufacture date
-            28, # 1.  Days since first charge
-            25, # 2.  Days since last tool use (corrected for current time)
-            26, # 3.  Days since last charge (corrected for current time)
-            12, # 4.  Voltages and imbalance
-            13, # 5.  temp (non-forge)
-            18, # 6.  temp (forge)
-            29, # 7.  Total discharge (Ah)
-            39, # 8.  Discharged to empty (count)
-            40, # 9.  Overheat events
-            41, # 10. Overcurrent events
-            42, # 11. Low-voltage events
-            43, # 12. Low-voltage bounce
-            33, 32, 31, # 13, 14, 15. Redlink, dumb, total charge count
-            35, # 16. Total charge time
-            36, # 17. Time idling on charger
-            38  # 18. Low-voltage charges (any cell <2.5V)
-        ] 
-        reg_list += range(44,64) # 19-38. discharge buckets (10-20A, 20-30A, ..., 200A+)
-        reg_list += [
-            8,  # 39. System date
-            2   # 40. type & serial
-        ] 
-        
-        
         # turn off debugging messages
         self.txrx_save_and_set(False)
         
         try:
             print("Reading battery. This will take 5-10sec\n")
-            array = self.read_id(reg_list, force_refresh, "array")
+            data = self.health_data(force_refresh)
             
-            sn = array[40][1]
-            numbers = findall(r'\d+\.?\d*', sn)
-            bat_type = numbers[0]
-            e_serial = numbers[1]
-            bat_lookup = {
-                "36": [1.5, "1.5Ah CP (5s1p 18650)"],
-                "37": [2, "2Ah CP (5s1p 18650)"],
-                "38": [3, "3Ah XC (5s2p 18650)"],
-                "39": [4, "4Ah XC (5s2p 18650)"],
-                "40": [5, "5Ah XC (5s2p 18650) (<= Dec 2018)"],
-                "165": [5, "5Ah XC (5s2p 18650) (Aug 2019 - Jun 2021)"],
-                "306": [5, "5Ah XC (5s2p 18650) (Feb 2021 - Jul 2023)"],                
-                "424": [5, "5Ah XC (5s2p 18650) (>= Sep 2023)"],
-                "46": [6, "6Ah XC (5s2p 18650)"],
-                "47": [9, "9Ah HD (5s3p 18650)"],                
-                "104": [3, "3Ah HO (5s1p 21700)"],
-                "150": [6, "5.5Ah HO (5s2p 21700) (EU only)"],
-                "106": [6, "6Ah HO (5s2p 21700)"],
-                "107": [8, "8Ah HO (5s2p 21700)"],
-                "108": [12, "12Ah HO (5s3p 21700)"],
-                "383": [8, "8Ah Forge (5s2p 21700 tabless)"],
-                "384": [12, "12Ah Forge (5s3p 21700 tabless)"]
-            }
-            bat_text = bat_lookup.get(bat_type, [0, "Unknown"])
-            print(f"Type: {bat_type} [{bat_text[1]}]")
-            print("E-serial:", e_serial, "(does NOT match case serial)")
+            print(f"Type: {data['battery_type']['value']} [{data['battery_description']['value']}]")
+            print("E-serial:", data['e_serial']['value'], "(does NOT match case serial)")
             
-            #now = datetime.datetime.now(datetime.timezone.utc)
-            bat_now = array[39][1]
-            
-            #print("Manufacture date: ", array[0].strftime('%Y-%m-%d %H:%M:%S') )
-            print("Manufacture date:", array[0][1].strftime('%Y-%m-%d') )
-            print("Days since 1st charge:", array[1][1])
-            print("Days since last tool use:", (bat_now - array[2][1]).days )
-            print("Days since last charge:", (bat_now - array[3][1]).days )
-            print("Pack voltage:", sum(array[4][1])/1000 )
-            print("Cell Voltages (mV):", array[4][1] )
-            print("Cell Imbalance (mV):", max(array[4][1]) - min(array[4][1]) )
-            if array[5][1]:
-                print("Temperature (deg C):", array[5][1])
-            if array[6][1]:
-                print("Temperature (deg C):", array[6][1])
+            print("Manufacture date:", data['manufacture_date']['value'].strftime('%Y-%m-%d') )
+            print("Days since 1st charge:", data['days_since_first_charge']['value'])
+            print("Days since last tool use:", data['days_since_last_tool_use']['value'] )
+            print("Days since last charge:", data['days_since_last_charge']['value'] )
+            print("Pack voltage:", data['pack_voltage_v']['value'] )
+            print("Cell Voltages (mV):", data['cell_voltages_mv']['value'] )
+            print("Cell Imbalance (mV):", data['cell_imbalance_mv']['value'] )
+            if data['temperature_c']['value']:
+                print("Temperature (deg C):", data['temperature_c']['value'])
+            if data['temperature_c_forge']['value']:
+                print("Temperature (deg C):", data['temperature_c_forge']['value'])
             
             print("\nCHARGING STATS:")
-            print(f"Charge count [Redlink, dumb, (total)]: {(array[13][1])}, {(array[14][1])}, ({(array[15][1])})")
-            print("Total charge time:", array[16][1])
-            print("Time idling on charger:", array[17][1])
-            print("Low-voltage charges (any cell <2.5V):", array[18][1])
+            print(f"Charge count [Redlink, dumb, (total)]: {data['charge_count_redlink']['value']}, {data['charge_count_dumb']['value']}, ({data['charge_count_total']['value']})")
+            print("Total charge time:", data['total_charge_time']['value'])
+            print("Time idling on charger:", data['time_idle_on_charger']['value'])
+            print("Low-voltage charges (any cell <2.5V):", data['low_voltage_charges']['value'])
             
             print("\nTOOL USE STATS:")
-            print("Total discharge (Ah):", f"{array[7][1]/3600:.2f}")
-            if bat_text[0] != 0:
-                total_discharge_cycles = f"{array[7][1] / 3600 / bat_text[0]:.2f}"
+            print("Total discharge (Ah):", f"{data['total_discharge_ah']['value']:.2f}")
+            if data['capacity_ah']['valid']:
+                total_discharge_cycles = f"{data['total_discharge_cycles']['value']:.2f}"
             else:
                 total_discharge_cycles = 'Unknown battery type, unable to calculate'
             print("Total discharge cycles:", total_discharge_cycles)
-            print("Times discharged to empty:", array[8][1])
-            print("Times overheated:", array[9][1])
-            print("Overcurrent events:", array[10][1])
-            print("Low-voltage events:", array[11][1])
-            print("Low-voltage bounce/stutter:", array[12][1])
+            print("Times discharged to empty:", data['discharged_to_empty']['value'])
+            print("Times overheated:", data['times_overheated']['value'])
+            print("Overcurrent events:", data['overcurrent_events']['value'])
+            print("Low-voltage events:", data['low_voltage_events']['value'])
+            print("Low-voltage bounce/stutter:", data['low_voltage_bounce']['value'])
             
-            tool_time = 0
-            for i in range(19,39):
-                tool_time += array[i][1]
+            print("Total time on tool (>10A):", datetime.timedelta(seconds=data['tool_time_s']['value']))
                 
-            print("Total time on tool (>10A):", datetime.timedelta(seconds=tool_time))
-                
-            for i,j in enumerate(range(19,38)):
-                amp_range = f"{(i+1)*10}-{(i+2)*10}A"
-                label = f"Time @ {amp_range:>8}:"
-                t = array[j][1]
-                hhmmss = datetime.timedelta(seconds=t)
-                pct = round( (t/tool_time)*100 ) if tool_time else 0
+            for bucket in data['discharge_buckets']:
+                label = f"Time @ {bucket['range']:>8}:"
+                hhmmss = datetime.timedelta(seconds=bucket['seconds'])
+                pct = bucket['percent']
                 bar = "X" * round(pct)
                 print(label, hhmmss, f"{pct:2d}%", bar)
-            # Do last label different
-            j += 1
-            amp_range = f"> 200A"
-            label = f"Time @ {amp_range:>8}:"
-            t = array[j][1]
-            hhmmss = datetime.timedelta(seconds=t)
-            pct = round( (t/tool_time)*100 ) if tool_time else 0
-            bar = "X" * round(pct)
-            print(label, hhmmss, f"{pct:2d}%", bar)
                 
         except Exception as e:
             print(f"health: Failed with error: {e}")
