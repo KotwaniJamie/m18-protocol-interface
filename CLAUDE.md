@@ -29,14 +29,14 @@ bit-reversed on the wire (see `send()` / `read_response()`).
   still labelled Unknown.
 - `data_matrix[]` is the dummy-read list that refreshes the `0x9000` RAM block before
   real reads happen.
-- **`health()` prints to stdout and returns nothing.** All the derived math — cell
-  imbalance, equivalent discharge cycles, total time on tool, the battery-type lookup —
-  happens inline inside print statements and is then discarded. This is the central
-  obstacle to everything this project wants to do.
+- **`health_data()` returns the derived values; `health()` formats and prints them.**
+  Was previously all inline inside print statements and discarded — that was the central
+  obstacle to this project, and is fixed on `health-data` (not yet upstream).
 - `read_id(output=...)` has four modes: `"label"` (prints), `"raw"` (prints, for
   spreadsheet paste), `"array"` (returns `[[id, value], ...]`), and `"form"`.
-- `health()` consumes `read_id(..., "array")` by **positional index** into a hand-built
-  `reg_list`. Adding or reordering a register silently shifts every field after it.
+- Registers are looked up by id through `HEALTH_REGISTERS`. This used to be **positional
+  indexing** into a hand-built `reg_list`, where inserting or reordering an entry silently
+  shifted every field after it.
 
 ## Landmines
 
@@ -51,9 +51,10 @@ bit-reversed on the wire (see `send()` / `read_response()`).
    `1193046:28:15` (that is 2³² seconds). See issue #28 for a real example. Reports must
    detect and flag these, never present them as measurements.
 
-3. **Division by zero on an unused pack.** Around line 879:
-   `pct = round((t/tool_time)*100)`. If a battery has never drawn >10A, `tool_time` is 0.
-   Open issue #47.
+3. **Division by zero on an unused pack.** Fixed on `fix-divzero` (issue #47). There were
+   two sites, not one: the 10-200A loop and the `>200A` tail. The crash was swallowed by
+   the broad `except` in `health()`, so it surfaced as "Check battery is connected" —
+   it looked like an adapter fault.
 
 4. **The e-serial does not match the case serial.** The code states this explicitly.
    There is no way to read the case-printed serial over the wire; it must be captured
@@ -70,15 +71,30 @@ bit-reversed on the wire (see `send()` / `read_response()`).
 
 - **Phase 0** — Verify hardware. Identify the adapter chip, run the README's J1/J2 voltage
   checks, hand-scan five batteries spanning the age range before writing anything.
-- **Phase 1** — Data layer. Add `health_data()` returning a dict with typed fields and
-  per-field validity flags; rewrite `health()` to call it and print. Output must be
-  byte-identical to today.
+- **Phase 1** — ✅ Done, on `health-data`. `health_data()` returns 30 fields as
+  `{"value", "valid"}`; `health()` renders them. Validity propagates — a value derived
+  from a sentinel is never marked more trustworthy than the register it came from.
+  Output verified byte-identical across 1000 randomised packs. Date fields are
+  `datetime` objects, so JSON needs `default=str`.
 - **Phase 2** — Capture all ~90 registers to JSON per battery, not just the 41 that
   `health()` uses. Storage is free; re-handling 40 batteries later is not.
 - **Phase 3** — Batch runner. Hold the port open, poll `reset()` to detect insertion,
   capture case serial, scan, write JSON, idle, next. One bad battery must not end the run.
 - **Phase 4** — JSON to one-page PDF, as a separate step from scanning so reports can be
   re-rendered without re-scanning.
+
+## Fork state (2026-09-01)
+
+- `master` — clean mirror of `upstream/master`. Tracks upstream, never committed to.
+- `sector67` — this file. Long-lived, never PR'd upstream.
+- `fix-divzero` — one commit, issue #47. Ready to PR, not yet submitted.
+- `health-data` — built on `fix-divzero`. Two commits: the `health_data()` split, and
+  hardware-free regression tests (`tests/`, stdlib only). The tests are a separate
+  commit so they can be dropped for a minimal upstream PR.
+
+`tests/test_health.py` stubs `read_id()` with canned registers, so the arithmetic and
+formatting run with no pack attached. Printed output is pinned to
+`tests/golden_health.txt`; regenerate deliberately with `--update-golden`.
 
 ## Branch discipline
 
