@@ -876,7 +876,7 @@ class M18:
                 label = f"Time @ {amp_range:>8}:"
                 t = array[j][1]
                 hhmmss = datetime.timedelta(seconds=t)
-                pct = round( (t/tool_time)*100 )
+                pct = round( (t/tool_time)*100 ) if tool_time else 0
                 bar = "X" * round(pct)
                 print(label, hhmmss, f"{pct:2d}%", bar)
             # Do last label different
@@ -885,7 +885,7 @@ class M18:
             label = f"Time @ {amp_range:>8}:"
             t = array[j][1]
             hhmmss = datetime.timedelta(seconds=t)
-            pct = round( (t/tool_time)*100 )
+            pct = round( (t/tool_time)*100 ) if tool_time else 0
             bar = "X" * round(pct)
             print(label, hhmmss, f"{pct:2d}%", bar)
                 
