@@ -1,0 +1,349 @@
+########## normal ##########
+Reading battery. This will take 5-10sec
+
+Type: 40 [5Ah XC (5s2p 18650) (<= Dec 2018)]
+E-serial: 8675309 (does NOT match case serial)
+Manufacture date: 2021-03-15
+Days since 1st charge: 1985
+Days since last tool use: 19
+Days since last charge: 10
+Pack voltage: 18.246
+Cell Voltages (mV): [3650, 3648, 3655, 3641, 3652]
+Cell Imbalance (mV): 14
+Temperature (deg C): 38.97
+
+CHARGING STATS:
+Charge count [Redlink, dumb, (total)]: 210, 18, (228)
+Total charge time: 135:00:00
+Time idling on charger: 26:00:00
+Low-voltage charges (any cell <2.5V): 4
+
+TOOL USE STATS:
+Total discharge (Ah): 347.22
+Total discharge cycles: 69.44
+Times discharged to empty: 12
+Times overheated: 3
+Overcurrent events: 0
+Low-voltage events: 7
+Low-voltage bounce/stutter: 2
+Total time on tool (>10A): 22:07:32
+Time @   10-20A: 11:40:00 53% XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+Time @   20-30A: 5:50:00 26% XXXXXXXXXXXXXXXXXXXXXXXXXX
+Time @   30-40A: 2:30:00 11% XXXXXXXXXXX
+Time @   40-50A: 1:10:00  5% XXXXX
+Time @   50-60A: 0:30:00  2% XX
+Time @   60-70A: 0:15:00  1% X
+Time @   70-80A: 0:06:40  1% X
+Time @   80-90A: 0:03:00  0% 
+Time @  90-100A: 0:01:30  0% 
+Time @ 100-110A: 0:00:40  0% 
+Time @ 110-120A: 0:00:20  0% 
+Time @ 120-130A: 0:00:10  0% 
+Time @ 130-140A: 0:00:05  0% 
+Time @ 140-150A: 0:00:03  0% 
+Time @ 150-160A: 0:00:02  0% 
+Time @ 160-170A: 0:00:01  0% 
+Time @ 170-180A: 0:00:01  0% 
+Time @ 180-190A: 0:00:00  0% 
+Time @ 190-200A: 0:00:00  0% 
+Time @   > 200A: 0:00:00  0% 
+
+########## unused ##########
+Reading battery. This will take 5-10sec
+
+Type: 40 [5Ah XC (5s2p 18650) (<= Dec 2018)]
+E-serial: 8675309 (does NOT match case serial)
+Manufacture date: 2021-03-15
+Days since 1st charge: 1985
+Days since last tool use: 19
+Days since last charge: 10
+Pack voltage: 18.246
+Cell Voltages (mV): [3650, 3648, 3655, 3641, 3652]
+Cell Imbalance (mV): 14
+Temperature (deg C): 38.97
+
+CHARGING STATS:
+Charge count [Redlink, dumb, (total)]: 210, 18, (228)
+Total charge time: 135:00:00
+Time idling on charger: 26:00:00
+Low-voltage charges (any cell <2.5V): 4
+
+TOOL USE STATS:
+Total discharge (Ah): 347.22
+Total discharge cycles: 69.44
+Times discharged to empty: 12
+Times overheated: 3
+Overcurrent events: 0
+Low-voltage events: 7
+Low-voltage bounce/stutter: 2
+Total time on tool (>10A): 0:00:00
+Time @   10-20A: 0:00:00  0% 
+Time @   20-30A: 0:00:00  0% 
+Time @   30-40A: 0:00:00  0% 
+Time @   40-50A: 0:00:00  0% 
+Time @   50-60A: 0:00:00  0% 
+Time @   60-70A: 0:00:00  0% 
+Time @   70-80A: 0:00:00  0% 
+Time @   80-90A: 0:00:00  0% 
+Time @  90-100A: 0:00:00  0% 
+Time @ 100-110A: 0:00:00  0% 
+Time @ 110-120A: 0:00:00  0% 
+Time @ 120-130A: 0:00:00  0% 
+Time @ 130-140A: 0:00:00  0% 
+Time @ 140-150A: 0:00:00  0% 
+Time @ 150-160A: 0:00:00  0% 
+Time @ 160-170A: 0:00:00  0% 
+Time @ 170-180A: 0:00:00  0% 
+Time @ 180-190A: 0:00:00  0% 
+Time @ 190-200A: 0:00:00  0% 
+Time @   > 200A: 0:00:00  0% 
+
+########## dead_sentinels ##########
+Reading battery. This will take 5-10sec
+
+Type: 40 [5Ah XC (5s2p 18650) (<= Dec 2018)]
+E-serial: 8675309 (does NOT match case serial)
+Manufacture date: 2021-03-15
+Days since 1st charge: 65535
+Days since last tool use: 20685
+Days since last charge: 20685
+Pack voltage: 18.246
+Cell Voltages (mV): [3650, 3648, 3655, 3641, 3652]
+Cell Imbalance (mV): 14
+Temperature (deg C): 38.97
+
+CHARGING STATS:
+Charge count [Redlink, dumb, (total)]: 65535, 65535, (4294967295)
+Total charge time: 1193046:28:15
+Time idling on charger: 1193046:28:15
+Low-voltage charges (any cell <2.5V): 65535
+
+TOOL USE STATS:
+Total discharge (Ah): 1193046.47
+Total discharge cycles: 238609.29
+Times discharged to empty: 65535
+Times overheated: 65535
+Overcurrent events: 65535
+Low-voltage events: 65535
+Low-voltage bounce/stutter: 65535
+Total time on tool (>10A): 15 days, 4:05:00
+Time @   10-20A: 18:12:15  5% XXXXX
+Time @   20-30A: 18:12:15  5% XXXXX
+Time @   30-40A: 18:12:15  5% XXXXX
+Time @   40-50A: 18:12:15  5% XXXXX
+Time @   50-60A: 18:12:15  5% XXXXX
+Time @   60-70A: 18:12:15  5% XXXXX
+Time @   70-80A: 18:12:15  5% XXXXX
+Time @   80-90A: 18:12:15  5% XXXXX
+Time @  90-100A: 18:12:15  5% XXXXX
+Time @ 100-110A: 18:12:15  5% XXXXX
+Time @ 110-120A: 18:12:15  5% XXXXX
+Time @ 120-130A: 18:12:15  5% XXXXX
+Time @ 130-140A: 18:12:15  5% XXXXX
+Time @ 140-150A: 18:12:15  5% XXXXX
+Time @ 150-160A: 18:12:15  5% XXXXX
+Time @ 160-170A: 18:12:15  5% XXXXX
+Time @ 170-180A: 18:12:15  5% XXXXX
+Time @ 180-190A: 18:12:15  5% XXXXX
+Time @ 190-200A: 18:12:15  5% XXXXX
+Time @   > 200A: 18:12:15  5% XXXXX
+
+########## unknown_type ##########
+Reading battery. This will take 5-10sec
+
+Type: 999 [Unknown]
+E-serial: 1234567 (does NOT match case serial)
+Manufacture date: 2021-03-15
+Days since 1st charge: 1985
+Days since last tool use: 19
+Days since last charge: 10
+Pack voltage: 18.246
+Cell Voltages (mV): [3650, 3648, 3655, 3641, 3652]
+Cell Imbalance (mV): 14
+Temperature (deg C): 38.97
+
+CHARGING STATS:
+Charge count [Redlink, dumb, (total)]: 210, 18, (228)
+Total charge time: 135:00:00
+Time idling on charger: 26:00:00
+Low-voltage charges (any cell <2.5V): 4
+
+TOOL USE STATS:
+Total discharge (Ah): 347.22
+Total discharge cycles: Unknown battery type, unable to calculate
+Times discharged to empty: 12
+Times overheated: 3
+Overcurrent events: 0
+Low-voltage events: 7
+Low-voltage bounce/stutter: 2
+Total time on tool (>10A): 22:07:32
+Time @   10-20A: 11:40:00 53% XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+Time @   20-30A: 5:50:00 26% XXXXXXXXXXXXXXXXXXXXXXXXXX
+Time @   30-40A: 2:30:00 11% XXXXXXXXXXX
+Time @   40-50A: 1:10:00  5% XXXXX
+Time @   50-60A: 0:30:00  2% XX
+Time @   60-70A: 0:15:00  1% X
+Time @   70-80A: 0:06:40  1% X
+Time @   80-90A: 0:03:00  0% 
+Time @  90-100A: 0:01:30  0% 
+Time @ 100-110A: 0:00:40  0% 
+Time @ 110-120A: 0:00:20  0% 
+Time @ 120-130A: 0:00:10  0% 
+Time @ 130-140A: 0:00:05  0% 
+Time @ 140-150A: 0:00:03  0% 
+Time @ 150-160A: 0:00:02  0% 
+Time @ 160-170A: 0:00:01  0% 
+Time @ 170-180A: 0:00:01  0% 
+Time @ 180-190A: 0:00:00  0% 
+Time @ 190-200A: 0:00:00  0% 
+Time @   > 200A: 0:00:00  0% 
+
+########## forge ##########
+Reading battery. This will take 5-10sec
+
+Type: 383 [8Ah Forge (5s2p 21700 tabless)]
+E-serial: 4242424 (does NOT match case serial)
+Manufacture date: 2021-03-15
+Days since 1st charge: 1985
+Days since last tool use: 19
+Days since last charge: 10
+Pack voltage: 18.246
+Cell Voltages (mV): [3650, 3648, 3655, 3641, 3652]
+Cell Imbalance (mV): 14
+Temperature (deg C): 31.75
+
+CHARGING STATS:
+Charge count [Redlink, dumb, (total)]: 210, 18, (228)
+Total charge time: 135:00:00
+Time idling on charger: 26:00:00
+Low-voltage charges (any cell <2.5V): 4
+
+TOOL USE STATS:
+Total discharge (Ah): 347.22
+Total discharge cycles: 43.40
+Times discharged to empty: 12
+Times overheated: 3
+Overcurrent events: 0
+Low-voltage events: 7
+Low-voltage bounce/stutter: 2
+Total time on tool (>10A): 22:07:32
+Time @   10-20A: 11:40:00 53% XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+Time @   20-30A: 5:50:00 26% XXXXXXXXXXXXXXXXXXXXXXXXXX
+Time @   30-40A: 2:30:00 11% XXXXXXXXXXX
+Time @   40-50A: 1:10:00  5% XXXXX
+Time @   50-60A: 0:30:00  2% XX
+Time @   60-70A: 0:15:00  1% X
+Time @   70-80A: 0:06:40  1% X
+Time @   80-90A: 0:03:00  0% 
+Time @  90-100A: 0:01:30  0% 
+Time @ 100-110A: 0:00:40  0% 
+Time @ 110-120A: 0:00:20  0% 
+Time @ 120-130A: 0:00:10  0% 
+Time @ 130-140A: 0:00:05  0% 
+Time @ 140-150A: 0:00:03  0% 
+Time @ 150-160A: 0:00:02  0% 
+Time @ 160-170A: 0:00:01  0% 
+Time @ 170-180A: 0:00:01  0% 
+Time @ 180-190A: 0:00:00  0% 
+Time @ 190-200A: 0:00:00  0% 
+Time @   > 200A: 0:00:00  0% 
+
+########## forge_zero_temp ##########
+Reading battery. This will take 5-10sec
+
+Type: 40 [5Ah XC (5s2p 18650) (<= Dec 2018)]
+E-serial: 8675309 (does NOT match case serial)
+Manufacture date: 2021-03-15
+Days since 1st charge: 1985
+Days since last tool use: 19
+Days since last charge: 10
+Pack voltage: 18.246
+Cell Voltages (mV): [3650, 3648, 3655, 3641, 3652]
+Cell Imbalance (mV): 14
+Temperature (deg C): 0.00
+
+CHARGING STATS:
+Charge count [Redlink, dumb, (total)]: 210, 18, (228)
+Total charge time: 135:00:00
+Time idling on charger: 26:00:00
+Low-voltage charges (any cell <2.5V): 4
+
+TOOL USE STATS:
+Total discharge (Ah): 347.22
+Total discharge cycles: 69.44
+Times discharged to empty: 12
+Times overheated: 3
+Overcurrent events: 0
+Low-voltage events: 7
+Low-voltage bounce/stutter: 2
+Total time on tool (>10A): 22:07:32
+Time @   10-20A: 11:40:00 53% XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+Time @   20-30A: 5:50:00 26% XXXXXXXXXXXXXXXXXXXXXXXXXX
+Time @   30-40A: 2:30:00 11% XXXXXXXXXXX
+Time @   40-50A: 1:10:00  5% XXXXX
+Time @   50-60A: 0:30:00  2% XX
+Time @   60-70A: 0:15:00  1% X
+Time @   70-80A: 0:06:40  1% X
+Time @   80-90A: 0:03:00  0% 
+Time @  90-100A: 0:01:30  0% 
+Time @ 100-110A: 0:00:40  0% 
+Time @ 110-120A: 0:00:20  0% 
+Time @ 120-130A: 0:00:10  0% 
+Time @ 130-140A: 0:00:05  0% 
+Time @ 140-150A: 0:00:03  0% 
+Time @ 150-160A: 0:00:02  0% 
+Time @ 160-170A: 0:00:01  0% 
+Time @ 170-180A: 0:00:01  0% 
+Time @ 180-190A: 0:00:00  0% 
+Time @ 190-200A: 0:00:00  0% 
+Time @   > 200A: 0:00:00  0% 
+
+########## one_bucket ##########
+Reading battery. This will take 5-10sec
+
+Type: 40 [5Ah XC (5s2p 18650) (<= Dec 2018)]
+E-serial: 8675309 (does NOT match case serial)
+Manufacture date: 2021-03-15
+Days since 1st charge: 1985
+Days since last tool use: 19
+Days since last charge: 10
+Pack voltage: 18.246
+Cell Voltages (mV): [3650, 3648, 3655, 3641, 3652]
+Cell Imbalance (mV): 14
+Temperature (deg C): 38.97
+
+CHARGING STATS:
+Charge count [Redlink, dumb, (total)]: 210, 18, (228)
+Total charge time: 135:00:00
+Time idling on charger: 26:00:00
+Low-voltage charges (any cell <2.5V): 4
+
+TOOL USE STATS:
+Total discharge (Ah): 347.22
+Total discharge cycles: 69.44
+Times discharged to empty: 12
+Times overheated: 3
+Overcurrent events: 0
+Low-voltage events: 7
+Low-voltage bounce/stutter: 2
+Total time on tool (>10A): 1:00:00
+Time @   10-20A: 0:00:00  0% 
+Time @   20-30A: 0:00:00  0% 
+Time @   30-40A: 0:00:00  0% 
+Time @   40-50A: 0:00:00  0% 
+Time @   50-60A: 0:00:00  0% 
+Time @   60-70A: 0:00:00  0% 
+Time @   70-80A: 0:00:00  0% 
+Time @   80-90A: 0:00:00  0% 
+Time @  90-100A: 0:00:00  0% 
+Time @ 100-110A: 0:00:00  0% 
+Time @ 110-120A: 0:00:00  0% 
+Time @ 120-130A: 0:00:00  0% 
+Time @ 130-140A: 0:00:00  0% 
+Time @ 140-150A: 0:00:00  0% 
+Time @ 150-160A: 0:00:00  0% 
+Time @ 160-170A: 0:00:00  0% 
+Time @ 170-180A: 0:00:00  0% 
+Time @ 180-190A: 0:00:00  0% 
+Time @ 190-200A: 0:00:00  0% 
+Time @   > 200A: 1:00:00 100% XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
