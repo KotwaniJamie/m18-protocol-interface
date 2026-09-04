@@ -171,48 +171,24 @@ landmine 3's division-by-zero produced. The broad `except` flattens every distin
 failure into one misleading sentence. Across 40 packs that sends you chasing adapter
 faults that do not exist. Phase 3 needs its own error path; do not reuse `health()`'s.
 
-## Case serials, decoded 2026-09-04
+## Case serials
 
-The sticker is three fields:
+The sticker reads `G29JDCBC 180720 3894605` — an 8-char model code, a YYMMDD date, and a
+7-digit number. **We use it purely as an identifier to pair with the e-serial.** Do not
+read anything further into it.
 
-```
-G29JDCBC   180720   3894605
-└model──┘  └YYMMDD┘ └serial┘
-```
+Two operational facts, both verified across five packs:
 
-- **The 8-char code is a model code, not an identifier.** Packs 3 and 4 both read
-  `G29JDCBC`, both type 40 (5Ah XC ≤ Dec 2018). Pack 2 is `G29NDCBC` (type 424, the
-  ≥ Sep 2023 5Ah). Packs 1 and 5 are `B41VDCBA` (type 38, 3Ah). It tracks pack type, so it
-  cannot identify a battery.
-- **The middle field is the manufacture date and it matches the wire**, to the day. The one
-  apparent exception proves the rule: pack 2's sticker reads `240423` against a wire
-  timestamp of `2024-04-22 23:57:52` — eight minutes before midnight UTC. Allow ±1 day.
-- **The 7-digit number appears nowhere on the wire.** Searched all five full `--ss` dumps
-  for it; no hit. Landmine 4 is now confirmed empirically rather than taken on the code's
-  word. Out-of-band capture is genuinely required.
+- **The 7-digit number appears nowhere on the wire.** Searched all five `--ss` dumps.
+  Landmine 4 confirmed empirically; out-of-band capture is genuinely required, and there
+  is no shortcut.
+- **It is alphanumeric.** Any capture path — scanner or keyboard — must accept letters. A
+  numeric-only field would silently mangle `G29NDCBC`.
 
-### The e-serial is a cell-group counter
-
-Packs 1 and 5 came off the line 28 seconds apart (`16:23:19` and `16:23:47`) with
-consecutive case serials. Their e-serials differ by exactly **5** — these are 5s2p packs,
-so the e-serial counts series positions, not batteries. Within one production run:
-
-```
-e_serial = 5 * case_serial + c
-pack 1   4769294 = 5 * 1431974 - 2390576
-pack 5   4769289 = 5 * 1431973 - 2390576
-```
-
-`c` resets per run (-2390576, -14806344, -14647364, -19106632 across the batches seen; even
-packs 3 and 4, same model code, differ because they are 7 days apart). **The case serial is
-therefore not derivable** — recovering `c` requires already knowing a case serial from that
-run. Do not try to shortcut manual entry with this.
-
-It is however worth **two integrity checks**, which matter because a human will be typing
-serials for 40 packs:
-
-1. Sticker date vs wire manufacture date must agree within 1 day.
-2. Two packs from one run with consecutive stickers must differ by 5 on the wire.
+The date field matches the wire manufacture date to within a day (pack 2's sticker reads
+`240423` against a wire time of `2024-04-22 23:57:52`, eight minutes before midnight UTC).
+Cheap cross-check that a sticker got paired with the right capture, which is worth having
+when a human is typing 40 of them.
 
 ## Imbalance does not discriminate — do not build the report on it
 
