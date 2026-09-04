@@ -62,15 +62,33 @@ bit-reversed on the wire (see `send()` / `read_response()`).
 
 5. **Adapter compatibility is unresolved upstream.** Issue #7 (50 comments) covers
    CP2102 problems. Counterfeit FT232 chips do not support break condition and emulate it
-   via DTR. Issue #61 (June 2026) is someone still stuck.
+   via DTR. Issue #61 (June 2026) is someone still stuck. **Not a problem for us** — our
+   adapter is verified genuine and working (see Hardware below). Keep this in mind only
+   when reading upstream issues, where it is the single most common cause of failure.
 
 6. **Python version.** `bytes2dt()` uses `datetime.UTC`, which needs 3.11+. `.python-version`
    pins 3.13. Issue #49 is someone hitting this.
 
+7. **TX state after the port closes is unknown.** `M18.__init__` calls `idle()` as soon as
+   the port opens, so any single command is safe while running. But `--idle` sets break
+   condition, prints, and exits — closing the port. Whether the FTDI chip *holds* the line
+   low after the host releases it, or reverts to UART idle-high, has not been measured. If
+   it reverts, then `--idle`-then-connect protects nothing and every `--health` run costs a
+   dumb-charge increment on exit. **Unmeasured as of 2026-09-04.** One multimeter reading
+   settles it: run `--idle`, wait for the shell prompt, then meter TX to GND with no pack
+   attached. <1V means it holds; ~3.3V means it does not. Phase 3 must hold one process
+   open across the whole batch either way, but this decides whether stock single-shot
+   commands are usable at all during development.
+
 ## Plan
 
-- **Phase 0** — Verify hardware. Identify the adapter chip, run the README's J1/J2 voltage
-  checks, hand-scan five batteries spanning the age range before writing anything.
+- **Phase 0** — ✅ Done 2026-09-04. Adapter identified and verified genuine, full read
+  chain confirmed against a real pack. See Hardware below. The README's `m.high()` J1/J2
+  voltage check was deliberately **skipped**: a successful `--health` read exercises the
+  same path (J2 drive + J1 receive) while staying under the 0.48s dumb-charge threshold,
+  whereas `m.high()` holds TX high indefinitely and guarantees a register-32 increment.
+  Still outstanding: hand-scan four or five more packs spanning the age range, including
+  a known-dead pack and a pack with no wifi logo, before writing the batch runner.
 - **Phase 1** — ✅ Done, on `health-data`. `health_data()` returns 30 fields as
   `{"value", "valid"}`; `health()` renders them. Validity propagates — a value derived
   from a sentinel is never marked more trustworthy than the register it came from.
@@ -82,6 +100,42 @@ bit-reversed on the wire (see `send()` / `read_response()`).
   capture case serial, scan, write JSON, idle, next. One bad battery must not end the run.
 - **Phase 4** — JSON to one-page PDF, as a separate step from scanning so reports can be
   re-rendered without re-scanning.
+
+## Hardware (verified 2026-09-04)
+
+- **Adapter** — FT232R USB UART, `VID:PID=0403:6001`, `SER=A94AM9KK`, bcdDevice 6.00,
+  manufacturer FTDI. Consistent with a genuine part, and confirmed genuine and wired to
+  3.3V by hand. Built by Scott Hasse, who tested it on his own packs.
+- **Port on this Mac** — `/dev/cu.usbserial-A94AM9KK`. Use `cu.*`, never `tty.*`; the
+  latter blocks waiting on carrier detect.
+- **Wiring** — TXD→J2, RXD→J1, GND→B−, per `docs/wiring.png`.
+- **Working invocation** —
+  `.venv/bin/python m18.py --port /dev/cu.usbserial-A94AM9KK --health`
+
+### Reference pack
+
+E-serial 4769294 is the known-good control: type 38 (3Ah XC, 5s2p 18650), built
+2018-08-28, 86 charges, 33.16 equivalent cycles, 15 mV imbalance, 0 overcurrent events.
+Full 190-value `--ss` dump captured. **Zero sentinels anywhere** in that dump, which is
+what makes it a clean baseline — compare suspect packs against it.
+
+Two findings from that first read, both of which affect later phases:
+
+- **Read noise is ±5 mV on cells and ±0.1 °C on temperature.** Back-to-back `--health`
+  and `--ss` runs seconds apart disagreed: cell 4 read 3900 then 3905, temperature 23.62
+  then 23.71. This is live ADC, so drift is expected — but the reference pack's headline
+  imbalance is 15 mV, only three times the noise floor. Any imbalance threshold must sit
+  well clear of ±5 mV or the pile gets sorted by measurement noise. Reinforces the
+  existing rule: scan first, set cutoffs from the real distribution.
+- **13 registers return nothing at all** on a fully healthy pack, plus one ASCII field
+  reading `"Undefined-----------"`. These are *not* sentinels — they are genuinely
+  unreadable. This is the exact case where the old code raised mid-report and
+  `health_data()` continues with `None`. That defensive path is not theoretical; it fires
+  on the first real battery. Phase 2 must record absent and sentinel as **distinct**
+  states, never collapse both to null.
+
+Also note `Time idling on charger: 7746:09:12` (322 days) on the reference pack is a
+real accumulated value, not a sentinel. Reports must not flag it.
 
 ## Fork state (2026-09-01)
 
@@ -122,7 +176,14 @@ formatting run with no pack attached. Printed output is pinned to
   diagnostic support?
 - Do the case labels have a scannable barcode, and does it encode the printed serial?
   This decides between a USB scanner and manual entry.
-- Which USB-serial chip is in the adapter, and is it genuine?
+- ~~Which USB-serial chip is in the adapter, and is it genuine?~~ Answered 2026-09-04:
+  genuine FT232R. See Hardware.
+- Does the FTDI line hold low after the port closes? See landmine 7. Unmeasured.
+- What does a pack with **no wifi logo** return — clean refusal, sentinels, or silence?
+  Scott reports his testing only worked on packs new enough to carry the logo, so this is
+  a hard filter on the pile, not an edge case. Phase 3 must tell apart three failures that
+  look alike: no diagnostic support, dead pack, bad connection.
 - Health thresholds are deliberately undecided. Scan the pile first, look at the actual
   distribution of imbalance and cycle counts, then set cutoffs. Inventing thresholds up
-  front produces confident-looking nonsense.
+  front produces confident-looking nonsense. Note the ±5 mV read noise above sets a hard
+  floor on how tight an imbalance cutoff can meaningfully be.
