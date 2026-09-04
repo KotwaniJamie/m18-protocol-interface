@@ -1,0 +1,16 @@
+2026-09-04 — dumb-charge counter test, pack 6278308 (case G29NDCBC 240423 5076988).
+tools/holder.py held the port open throughout; break asserted except during reads.
+Between the two reads the pack was physically unplugged and replugged 3 times.
+
+[14:02:33] holder up on /dev/cu.usbserial-A94AM9KK. TX held LOW. waiting for commands.
+[14:03:27] CMD: count
+[14:03:38] RESULT: redlink=19 dumb=2 total=21 imbal=22mV eserial=6278308
+[14:04:40] CMD: count
+[14:04:51] RESULT: redlink=19 dumb=2 total=21 imbal=22mV eserial=6278308
+[14:06:53] CMD: quit
+[14:06:53] quit: restoring idle and closing.
+[14:06:53] TX low. NOTE: closing the port may release it -- make sure no pack is attached now.
+[14:06:54] holder down.
+
+Counter unchanged: dumb=2 before and after. Reading and connecting are safe;
+only closing the port with a pack attached increments it.

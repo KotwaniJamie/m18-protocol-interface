@@ -1,5 +1,0 @@
-[14:02:33] holder up on /dev/cu.usbserial-A94AM9KK. TX held LOW. waiting for commands.
-[14:03:27] CMD: count
-[14:03:38] RESULT: redlink=19 dumb=2 total=21 imbal=22mV eserial=6278308
-[14:04:40] CMD: count
-[14:04:51] RESULT: redlink=19 dumb=2 total=21 imbal=22mV eserial=6278308
