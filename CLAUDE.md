@@ -171,6 +171,71 @@ landmine 3's division-by-zero produced. The broad `except` flattens every distin
 failure into one misleading sentence. Across 40 packs that sends you chasing adapter
 faults that do not exist. Phase 3 needs its own error path; do not reuse `health()`'s.
 
+## Case serials, decoded 2026-09-04
+
+The sticker is three fields:
+
+```
+G29JDCBC   180720   3894605
+└model──┘  └YYMMDD┘ └serial┘
+```
+
+- **The 8-char code is a model code, not an identifier.** Packs 3 and 4 both read
+  `G29JDCBC`, both type 40 (5Ah XC ≤ Dec 2018). Pack 2 is `G29NDCBC` (type 424, the
+  ≥ Sep 2023 5Ah). Packs 1 and 5 are `B41VDCBA` (type 38, 3Ah). It tracks pack type, so it
+  cannot identify a battery.
+- **The middle field is the manufacture date and it matches the wire**, to the day. The one
+  apparent exception proves the rule: pack 2's sticker reads `240423` against a wire
+  timestamp of `2024-04-22 23:57:52` — eight minutes before midnight UTC. Allow ±1 day.
+- **The 7-digit number appears nowhere on the wire.** Searched all five full `--ss` dumps
+  for it; no hit. Landmine 4 is now confirmed empirically rather than taken on the code's
+  word. Out-of-band capture is genuinely required.
+
+### The e-serial is a cell-group counter
+
+Packs 1 and 5 came off the line 28 seconds apart (`16:23:19` and `16:23:47`) with
+consecutive case serials. Their e-serials differ by exactly **5** — these are 5s2p packs,
+so the e-serial counts series positions, not batteries. Within one production run:
+
+```
+e_serial = 5 * case_serial + c
+pack 1   4769294 = 5 * 1431974 - 2390576
+pack 5   4769289 = 5 * 1431973 - 2390576
+```
+
+`c` resets per run (-2390576, -14806344, -14647364, -19106632 across the batches seen; even
+packs 3 and 4, same model code, differ because they are 7 days apart). **The case serial is
+therefore not derivable** — recovering `c` requires already knowing a case serial from that
+run. Do not try to shortcut manual entry with this.
+
+It is however worth **two integrity checks**, which matter because a human will be typing
+serials for 40 packs:
+
+1. Sticker date vs wire manufacture date must agree within 1 day.
+2. Two packs from one run with consecutive stickers must differ by 5 on the wire.
+
+## Imbalance does not discriminate — do not build the report on it
+
+Five packs, six years, 8x the cycle range:
+
+| e-serial | built | cycles | imbalance | charges | overheat | lowV | empty |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 4769294 | 2018-08-28 | 33.16 | 15 mV | 86 | 8 | 57 | 13 |
+| 4825661 | 2018-07-20 | 31.41 | 7 mV | 96 | 3 | 22 | 7 |
+| 5133836 | 2018-07-27 | 18.56 | 11 mV | 56 | 2 | 5 | 2 |
+| 4769289 | 2018-08-28 | — | 7 mV | 100 | — | — | — |
+| 6278308 | 2024-04-22 | 4.33 | 17-22 mV | 21 | 0 | 3 | 1 |
+
+The hardest-used pack has the best balance; the nearly-new one has the worst. Worse, pack
+6278308 measured **17 mV and 22 mV in two reads seconds apart** — a 30% swing on the
+headline number, consistent with the ±5 mV ADC noise. Imbalance in the 7-22 mV band is
+measurement noise, not pack condition.
+
+`low_voltage_events` by contrast scales cleanly with cycles (57 / 22 / 5 / 3), and
+`times_overheated` and `discharged_to_empty` order the packs consistently. **Those are the
+triage signals.** Imbalance may still flag a genuinely failing pack, but nothing in the
+healthy range should be sorted by it.
+
 ## Fork state (2026-09-01)
 
 - `master` — clean mirror of `upstream/master`. Tracks upstream, never committed to.
@@ -219,5 +284,9 @@ formatting run with no pack attached. Printed output is pinned to
   look alike: no diagnostic support, dead pack, bad connection.
 - Health thresholds are deliberately undecided. Scan the pile first, look at the actual
   distribution of imbalance and cycle counts, then set cutoffs. Inventing thresholds up
-  front produces confident-looking nonsense. Note the ±5 mV read noise above sets a hard
-  floor on how tight an imbalance cutoff can meaningfully be.
+  front produces confident-looking nonsense. **Partially answered 2026-09-04**: imbalance
+  is out (see above); build on cycles, `low_voltage_events`, `times_overheated`,
+  `discharged_to_empty`. Actual cutoffs still need the full pile.
+- Do the case labels carry a barcode? Still unknown, and the sticker serial is
+  alphanumeric (`G29NDCBC`), so any capture path must accept letters. A numeric-only
+  field would silently mangle it.

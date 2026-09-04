@@ -1,0 +1,246 @@
+{
+  "battery_type": {
+    "value": "40",
+    "valid": true
+  },
+  "battery_description": {
+    "value": "5Ah XC (5s2p 18650) (<= Dec 2018)",
+    "valid": true
+  },
+  "capacity_ah": {
+    "value": 5,
+    "valid": true
+  },
+  "e_serial": {
+    "value": "4825661",
+    "valid": true
+  },
+  "manufacture_date": {
+    "value": "2018-07-20 11:14:57+00:00",
+    "valid": true
+  },
+  "battery_date": {
+    "value": "2026-03-14 22:46:12+00:00",
+    "valid": true
+  },
+  "days_since_first_charge": {
+    "value": 2794,
+    "valid": true
+  },
+  "days_since_last_tool_use": {
+    "value": 4,
+    "valid": true
+  },
+  "days_since_last_charge": {
+    "value": 0,
+    "valid": true
+  },
+  "cell_voltages_mv": {
+    "value": [
+      4055,
+      4054,
+      4055,
+      4057,
+      4061
+    ],
+    "valid": true
+  },
+  "pack_voltage_v": {
+    "value": 20.282,
+    "valid": true
+  },
+  "cell_imbalance_mv": {
+    "value": 7,
+    "valid": true
+  },
+  "temperature_c": {
+    "value": 23.79,
+    "valid": true
+  },
+  "temperature_c_forge": {
+    "value": null,
+    "valid": false
+  },
+  "charge_count_redlink": {
+    "value": 88,
+    "valid": true
+  },
+  "charge_count_dumb": {
+    "value": 8,
+    "valid": true
+  },
+  "charge_count_total": {
+    "value": 96,
+    "valid": true
+  },
+  "total_charge_time": {
+    "value": "48:58:25",
+    "valid": true
+  },
+  "time_idle_on_charger": {
+    "value": "9196:19:41",
+    "valid": true
+  },
+  "low_voltage_charges": {
+    "value": 2,
+    "valid": true
+  },
+  "discharged_to_empty": {
+    "value": 7,
+    "valid": true
+  },
+  "times_overheated": {
+    "value": 3,
+    "valid": true
+  },
+  "overcurrent_events": {
+    "value": 0,
+    "valid": true
+  },
+  "low_voltage_events": {
+    "value": 22,
+    "valid": true
+  },
+  "low_voltage_bounce": {
+    "value": 0,
+    "valid": true
+  },
+  "total_discharge_as": {
+    "value": 565436,
+    "valid": true
+  },
+  "total_discharge_ah": {
+    "value": 157.06555555555556,
+    "valid": true
+  },
+  "total_discharge_cycles": {
+    "value": 31.413111111111114,
+    "valid": true
+  },
+  "discharge_buckets": [
+    {
+      "range": "10-20A",
+      "seconds": 12077,
+      "percent": 32,
+      "valid": true
+    },
+    {
+      "range": "20-30A",
+      "seconds": 10050,
+      "percent": 26,
+      "valid": true
+    },
+    {
+      "range": "30-40A",
+      "seconds": 5553,
+      "percent": 15,
+      "valid": true
+    },
+    {
+      "range": "40-50A",
+      "seconds": 3411,
+      "percent": 9,
+      "valid": true
+    },
+    {
+      "range": "50-60A",
+      "seconds": 1993,
+      "percent": 5,
+      "valid": true
+    },
+    {
+      "range": "60-70A",
+      "seconds": 1182,
+      "percent": 3,
+      "valid": true
+    },
+    {
+      "range": "70-80A",
+      "seconds": 1266,
+      "percent": 3,
+      "valid": true
+    },
+    {
+      "range": "80-90A",
+      "seconds": 989,
+      "percent": 3,
+      "valid": true
+    },
+    {
+      "range": "90-100A",
+      "seconds": 732,
+      "percent": 2,
+      "valid": true
+    },
+    {
+      "range": "100-110A",
+      "seconds": 504,
+      "percent": 1,
+      "valid": true
+    },
+    {
+      "range": "110-120A",
+      "seconds": 279,
+      "percent": 1,
+      "valid": true
+    },
+    {
+      "range": "120-130A",
+      "seconds": 91,
+      "percent": 0,
+      "valid": true
+    },
+    {
+      "range": "130-140A",
+      "seconds": 31,
+      "percent": 0,
+      "valid": true
+    },
+    {
+      "range": "140-150A",
+      "seconds": 11,
+      "percent": 0,
+      "valid": true
+    },
+    {
+      "range": "150-160A",
+      "seconds": 3,
+      "percent": 0,
+      "valid": true
+    },
+    {
+      "range": "160-170A",
+      "seconds": 4,
+      "percent": 0,
+      "valid": true
+    },
+    {
+      "range": "170-180A",
+      "seconds": 3,
+      "percent": 0,
+      "valid": true
+    },
+    {
+      "range": "180-190A",
+      "seconds": 0,
+      "percent": 0,
+      "valid": true
+    },
+    {
+      "range": "190-200A",
+      "seconds": 0,
+      "percent": 0,
+      "valid": true
+    },
+    {
+      "range": "> 200A",
+      "seconds": 0,
+      "percent": 0,
+      "valid": true
+    }
+  ],
+  "tool_time_s": {
+    "value": 38179,
+    "valid": true
+  }
+}
