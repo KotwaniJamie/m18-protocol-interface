@@ -197,18 +197,19 @@ Sorted by cycles. All seven carry the wifi logo and read cleanly; no sentinels a
 | e-serial | case | built | cycles | Ah | imbal | chgs | ovht | lowV | empty |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 5133886 | 3988041 | 2018-07-27 | 34.34 | 171.68 | 5 mV | 81 | 3 | 35 | 8 |
-| 4769294 | 1431974 | 2018-08-28 | 33.16 | 99.47 | 15 mV | 86 | 8 | 57 | 13 |
+| 4769294 | 1431974 | 2018-08-28 | 33.16 | 99.47 | 11 mV | 87 | 8 | 57 | 13 |
 | 4769289 | 1431973 | 2018-08-28 | 31.92 | 95.76 | 7 mV | 100 | 1 | 59 | 22 |
 | 4825661 | 3894605 | 2018-07-20 | 31.41 | 157.07 | 7 mV | 96 | 3 | 22 | 7 |
 | 5133836 | 3988036 | 2018-07-27 | 18.56 | 92.79 | 11 mV | 56 | 2 | 5 | 2 |
 | 6278308 | 5076988 | 2024-04-22 | 4.33 | 21.64 | 22 mV | 21 | 0 | 3 | 1 |
 | 5950263 | 0670871 | 2020-05-21 | 2.14 | 6.41 | **67 mV** | 8 | 0 | 1 | 1 |
 
-### Imbalance runs *inverse* to use — probably balancing opportunity, not damage
+### Imbalance trends *inverse* to use — probably balancing opportunity, not damage
 
-Excluding 4769294 (hand-captured before `capture.py` existed, and its two reads disagreed
-15/— mV), the imbalance column is monotonic against cycles: 5, 7, 7, 11, 22, 67. The
-least-used packs are the worst balanced.
+By descending cycles the imbalance column reads 5, 11, 7, 7, 11, 22, 67. Not monotonic —
+there is scatter inside the noise band, and 4769294 alone read 15 mV and 11 mV on two scans
+the same day. But the shape is unambiguous: the five well-used packs all sit at 5-11 mV,
+and the two least-used sit at 22 and 67.
 
 Cell balancing happens during charging. 5133886 has had 81 charges to balance; 5950263 has
 had 8. So **high imbalance on a lightly used pack may be idle drift, not a bad cell
@@ -216,21 +217,36 @@ group** — and those two conclusions call for opposite actions.
 
 **Do not condemn 5950263 on this scan.** Charge it fully two or three times and re-scan. If
 imbalance collapses toward 10 mV it is healthy and merely neglected; if it holds at 67 mV
-it is a genuine repair candidate. This test is cheap and must happen before any pack is
-written off for imbalance. The same applies to any low-cycle pack in the wider pile.
+it is a genuine repair candidate. Cheap test, and it must happen before any pack is written
+off for imbalance. Same for any low-cycle pack in the wider pile.
 
 ### What the report should use
 
 - **Wear** — cycles, Ah, `low_voltage_events`, `times_overheated`, `discharged_to_empty`.
   These order the packs consistently and are the honest condition signal.
-- **Imbalance** — a flag only, and only above the noise band, and only *interpreted
-  alongside charge count*. Below ~22 mV it carries no information (6278308 read 17 mV and
-  22 mV seconds apart; ±5 mV ADC noise). It is not a score and must never be rendered as a
-  grade.
-- Note 4769289: 100 charges, 59 low-voltage events, 22 discharges to empty — the most
-  abused pack in the set, yet 7 mV balanced. Abuse history and balance are independent.
+- **Imbalance** — a flag only, above the noise band, and interpreted *alongside charge
+  count*. Below ~22 mV it carries no information. Not a score; never render it as a grade.
+- 4769289 has 100 charges, 59 low-voltage events and 22 discharges to empty — the most
+  abused pack in the set — yet reads 7 mV. Abuse history and balance are independent.
 
 Cutoffs still need the full pile. Seven packs establish the shape, not the lines.
+
+### The dumb-charge counter really does increment — measured 2026-09-04
+
+Pack 4769294 read `82, 4, (86)` on its first scan and `82, 5, (87)` on a re-scan later the
+same day. Redlink unchanged; **the dumb count went up by one.** Landmine 1 is not
+theoretical and landmine 7 is now answered: TX goes high with a pack attached somewhere in
+this workflow — on port close, on physical connection, or both.
+
+It is not per-command. That pack saw roughly four process invocations across two connection
+sessions and gained exactly 1. So the trigger is per physical connection, or one specific
+event within it, and it has not been isolated.
+
+**Consequence for Phase 3: at one count per pack, a 40-pack run permanently corrupts 40
+records in the dataset being collected.** The batch runner must hold one process open
+across the whole run and, more importantly, this needs isolating first — instrument which
+event fires it (open, close, connect, disconnect) before scanning the pile. The three
+existing scans of 4769294 and 6278308 are enough of a baseline to test against.
 
 ### Still untested
 
