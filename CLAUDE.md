@@ -137,6 +137,40 @@ Two findings from that first read, both of which affect later phases:
 Also note `Time idling on charger: 7746:09:12` (322 days) on the reference pack is a
 real accumulated value, not a sentinel. Reports must not flag it.
 
+### Packs without the wifi logo do not respond — confirmed 2026-09-04
+
+A pack with no wifi-like logo by the serial returns **nothing**. Not garbage, not a
+malformed frame — zero bytes. Five consecutive `reset()` sync attempts all returned
+False, `in_waiting` stayed 0 after settling, and `reset()` failed via the
+`except ValueError` path in `read_response()` ("Empty response" on a zero-byte read),
+never reaching the `Unexpected response:` branch. Wiring was untouched from the
+successful read of the reference pack. Corroborated by Scott's independent testing on
+his own packs.
+
+This is a hard gate. No diagnostic radio is listening and nothing in software works
+around it. Sorting the pile by logo before scanning is not an optimisation, it is the
+first triage step. Transcript: `data/captures/no_wifi_logo_no_response.txt`.
+
+**Phase 3 must call `reset()` first and branch on it**, rather than diving into
+`read_id()` and interpreting the wreckage afterwards:
+
+| Signature | Meaning |
+| --- | --- |
+| `reset()` False, `in_waiting == 0` | no diagnostic support (or bad connection) |
+| `reset()` True, then sentinel values | dead pack — BMS talks, data is garbage |
+| `reset()` True, clean values | good pack |
+
+Note the first row is still two states sharing one signature. Since a no-logo pack is
+identified visually before it is ever connected, the runner should record the logo
+observation as operator input, and then treat silence from a pack that *has* a logo as a
+connection fault worth retrying.
+
+**`health()`'s error handling is unusable for batch work.** The no-logo failure printed
+`Check battery is connected and you have correct serial port` — the same message
+landmine 3's division-by-zero produced. The broad `except` flattens every distinct
+failure into one misleading sentence. Across 40 packs that sends you chasing adapter
+faults that do not exist. Phase 3 needs its own error path; do not reuse `health()`'s.
+
 ## Fork state (2026-09-01)
 
 - `master` — clean mirror of `upstream/master`. Tracks upstream, never committed to.

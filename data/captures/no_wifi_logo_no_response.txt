@@ -1,0 +1,25 @@
+2026-09-04 — pack with no wifi logo, Sector67 pile.
+Wiring untouched from the successful read of reference pack 4769294.
+
+--- m18.py --health ---
+Reading battery. This will take 5-10sec
+
+read_id: Failed with error: Empty response
+health: Failed with error: 'NoneType' object is not subscriptable
+Check battery is connected and you have correct serial port
+(exit 0)
+
+--- m18.py --ss ---
+read_id: Failed with error: Empty response
+
+--- low-level sync probe, 5x reset() ---
+Sending:  AA
+reset() -> False        (x5, identical)
+in_waiting = 0          after 0.5s settle
+
+reset() returned False via the `except ValueError` path in read_response()
+("Empty response" on a zero-byte read), NOT via the `Unexpected response:`
+path. The pack did not answer incorrectly; it did not answer at all.
+
+Corroborated by Scott Hasse's independent testing on his own packs: packs
+without the wifi-like logo by the serial number do not respond.
