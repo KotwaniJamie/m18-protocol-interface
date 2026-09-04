@@ -231,22 +231,38 @@ off for imbalance. Same for any low-cycle pack in the wider pile.
 
 Cutoffs still need the full pile. Seven packs establish the shape, not the lines.
 
-### The dumb-charge counter really does increment — measured 2026-09-04
+### The dumb-charge counter: cause isolated and solved — measured 2026-09-04
 
 Pack 4769294 read `82, 4, (86)` on its first scan and `82, 5, (87)` on a re-scan later the
-same day. Redlink unchanged; **the dumb count went up by one.** Landmine 1 is not
-theoretical and landmine 7 is now answered: TX goes high with a pack attached somewhere in
-this workflow — on port close, on physical connection, or both.
+same day. Redlink unchanged; the dumb count went up by one. Landmine 1 is not theoretical.
 
-It is not per-command. That pack saw roughly four process invocations across two connection
-sessions and gained exactly 1. So the trigger is per physical connection, or one specific
-event within it, and it has not been isolated.
+**The cause is the port closing with a pack attached**, not reading and not connecting.
+Closing the port releases break condition, TX reverts to UART idle-high, J2 goes above
+7.1V, and 0.48s later the pack counts a dumb charge. 4769294 sat through a gap between two
+separate commands (`--health` then `--ss`) with a pack attached; 6278308 only ever saw one
+held-open process that day and did **not** increment.
 
-**Consequence for Phase 3: at one count per pack, a 40-pack run permanently corrupts 40
-records in the dataset being collected.** The batch runner must hold one process open
-across the whole run and, more importantly, this needs isolating first — instrument which
-event fires it (open, close, connect, disconnect) before scanning the pile. The three
-existing scans of 4769294 and 6278308 are enough of a baseline to test against.
+**Verified against hardware with `tools/holder.py`** (one process, port opened once, break
+asserted the entire time except during reads):
+
+| | pack 6278308 |
+| --- | --- |
+| baseline | `redlink=19 dumb=2 total=21` |
+| after 3 physical connect/disconnect cycles + 2 full reads | `redlink=19 dumb=2 total=21` |
+
+Three connections and two reads, zero increments. So:
+
+- **Reading is safe.** Communication toggles TX far faster than 0.48s; it never rests high.
+- **Connecting is safe, provided the line is already held low.**
+- **Closing the port with a pack attached is the only dangerous act.**
+
+**The rule for Phase 3:** one process holds the port for the entire run, break asserted
+between packs, and no battery is attached when it exits. That is the whole mitigation, and
+it costs nothing — it is the same design that avoids paying the 10-second startup 40 times.
+`tools/holder.py` is the working skeleton.
+
+Corollary: never run the stock single-shot `--health` / `--ss` commands back to back on an
+attached pack. That is exactly what corrupted 4769294. Use the holder.
 
 ### Still untested
 
