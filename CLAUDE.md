@@ -190,27 +190,40 @@ The date field matches the wire manufacture date to within a day (pack 2's stick
 Cheap cross-check that a sticker got paired with the right capture, which is worth having
 when a human is typing 40 of them.
 
-## Imbalance does not discriminate — do not build the report on it
+## Health signals, from the six-pack scan (2026-09-04)
 
-Five packs, six years, 8x the cycle range:
+| e-serial | case | built | cycles | imbal | chgs | overheat | lowV | empty |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 4769294 | 1431974 | 2018-08-28 | 33.16 | 15 mV | 86 | 8 | 57 | 13 |
+| 4825661 | 3894605 | 2018-07-20 | 31.41 | 7 mV | 96 | 3 | 22 | 7 |
+| 5133836 | 3988036 | 2018-07-27 | 18.56 | 11 mV | 56 | 2 | 5 | 2 |
+| 4769289 | 1431973 | 2018-08-28 | — | 7 mV | 100 | — | — | — |
+| 6278308 | 5076988 | 2024-04-22 | 4.33 | 17-22 mV | 21 | 0 | 3 | 1 |
+| **5950263** | 0670871 | 2020-05-21 | **2.14** | **67 mV** | **8** | 0 | 1 | 1 |
 
-| e-serial | built | cycles | imbalance | charges | overheat | lowV | empty |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| 4769294 | 2018-08-28 | 33.16 | 15 mV | 86 | 8 | 57 | 13 |
-| 4825661 | 2018-07-20 | 31.41 | 7 mV | 96 | 3 | 22 | 7 |
-| 5133836 | 2018-07-27 | 18.56 | 11 mV | 56 | 2 | 5 | 2 |
-| 4769289 | 2018-08-28 | — | 7 mV | 100 | — | — | — |
-| 6278308 | 2024-04-22 | 4.33 | 17-22 mV | 21 | 0 | 3 | 1 |
+**Imbalance is a threshold alarm, not a gradient.** Between 7 and 22 mV it carries no
+information — the hardest-used pack (33 cycles) reads 15 mV while the nearly-new one reads
+17-22 mV, and 6278308 measured 17 mV and 22 mV in two reads seconds apart. That band is
+±5 mV ADC noise. Do not grade packs by it and do not put a number in that range on a
+report as if it were meaningful.
 
-The hardest-used pack has the best balance; the nearly-new one has the worst. Worse, pack
-6278308 measured **17 mV and 22 mV in two reads seconds apart** — a 30% swing on the
-headline number, consistent with the ±5 mV ADC noise. Imbalance in the 7-22 mV band is
-measurement noise, not pack condition.
+At 67 mV it is a different thing entirely: 13x the noise floor, structured rather than
+scattered (`[3960, 3965, 4027, 4007, 3998]` — two cell groups ~60 mV low). **Pack 5950263
+is the find of the scan.** Every wear metric says pristine: 8 charges, 2.14 cycles,
+6.41 Ah lifetime. Nothing but imbalance would have flagged it. Low use plus high imbalance
+is a bad cell group, not wear — a repair candidate, which is the category Scott
+specifically asked for.
 
-`low_voltage_events` by contrast scales cleanly with cycles (57 / 22 / 5 / 3), and
-`times_overheated` and `discharged_to_empty` order the packs consistently. **Those are the
-triage signals.** Imbalance may still flag a genuinely failing pack, but nothing in the
-healthy range should be sorted by it.
+So the report needs both, and they answer different questions:
+
+- **Wear** — cycles, `low_voltage_events`, `times_overheated`, `discharged_to_empty`.
+  These order the packs consistently; `low_voltage_events` in particular scales with cycles
+  (57 / 22 / 5 / 3 / 1).
+- **Fault** — imbalance, as a flag well clear of the noise band, not as a score.
+
+Cutoffs still need the full pile. One outlier in six is enough to prove imbalance can fire
+but not enough to place the line; note that the gap between the noise band (≤22 mV) and the
+one real fault (67 mV) is wide and currently empty.
 
 ## Fork state (2026-09-01)
 
