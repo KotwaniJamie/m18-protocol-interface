@@ -3,8 +3,18 @@
 Fork of [mnh-jansson/m18-protocol](https://github.com/mnh-jansson/m18-protocol).
 
 **Goal:** batch-scan a pile of Milwaukee M18 packs at Sector67, capture the case-printed
-serial alongside the on-wire diagnostics, and produce a one-page printable PDF health
-report per battery to support triage for repair, sale, or recycling.
+serial alongside the on-wire diagnostics, and present each pack's health so a human can
+triage it for repair, sale, or recycling.
+
+Two delivery surfaces, one data layer:
+
+- **A GUI** — the primary one. Someone walks up, connects a pack, and sees everything the
+  battery knows about itself laid out clearly. It has to look good and be readable by
+  someone who is not us; this is a makerspace tool other members will use.
+- **A one-page printable PDF** per battery, for the packs that get tagged and shelved.
+
+Both render from the same JSON. Scanning, storing, and presenting stay separate so a
+report can be re-rendered without re-handling the battery.
 
 ## Upstream status (verified 2026-09-01)
 
@@ -69,16 +79,14 @@ bit-reversed on the wire (see `send()` / `read_response()`).
 6. **Python version.** `bytes2dt()` uses `datetime.UTC`, which needs 3.11+. `.python-version`
    pins 3.13. Issue #49 is someone hitting this.
 
-7. **TX state after the port closes is unknown.** `M18.__init__` calls `idle()` as soon as
-   the port opens, so any single command is safe while running. But `--idle` sets break
-   condition, prints, and exits — closing the port. Whether the FTDI chip *holds* the line
-   low after the host releases it, or reverts to UART idle-high, has not been measured. If
-   it reverts, then `--idle`-then-connect protects nothing and every `--health` run costs a
-   dumb-charge increment on exit. **Unmeasured as of 2026-09-04.** One multimeter reading
-   settles it: run `--idle`, wait for the shell prompt, then meter TX to GND with no pack
-   attached. <1V means it holds; ~3.3V means it does not. Phase 3 must hold one process
-   open across the whole batch either way, but this decides whether stock single-shot
-   commands are usable at all during development.
+7. **TX reverts to idle-high when the port closes.** ✅ Answered 2026-09-04 by behaviour,
+   not by multimeter: pack 4769294 incremented its dumb count across the gap between two
+   separate single-shot commands, while pack 6278308 saw three connections and two reads
+   under one held-open process and did not move. So the FTDI chip does *not* hold the line
+   low after the host releases it, and `--idle`-then-connect protects nothing.
+   Consequence: **never run stock single-shot `--health` / `--ss` with a pack attached.**
+   One process holds the port for the whole session. See "The dumb-charge counter" below
+   for the full measurement.
 
 ## Plan
 
@@ -87,19 +95,27 @@ bit-reversed on the wire (see `send()` / `read_response()`).
   voltage check was deliberately **skipped**: a successful `--health` read exercises the
   same path (J2 drive + J1 receive) while staying under the 0.48s dumb-charge threshold,
   whereas `m.high()` holds TX high indefinitely and guarantees a register-32 increment.
-  Still outstanding: hand-scan four or five more packs spanning the age range, including
-  a known-dead pack and a pack with no wifi logo, before writing the batch runner.
+  Seven logo packs hand-scanned with full `--health` + `--ss` captures, plus one no-logo
+  pack characterised. No dead pack was available, so the sentinel path is still untested
+  against hardware.
 - **Phase 1** — ✅ Done, on `health-data`. `health_data()` returns 30 fields as
   `{"value", "valid"}`; `health()` renders them. Validity propagates — a value derived
   from a sentinel is never marked more trustworthy than the register it came from.
   Output verified byte-identical across 1000 randomised packs. Date fields are
   `datetime` objects, so JSON needs `default=str`.
 - **Phase 2** — Capture all ~90 registers to JSON per battery, not just the 41 that
-  `health()` uses. Storage is free; re-handling 40 batteries later is not.
+  `health()` uses. Storage is free; re-handling 40 batteries later is not. Absent and
+  sentinel must stay **distinct** states. `tools/capture.py` already writes most of this
+  shape; it needs widening from `health_data()` to the full register table.
 - **Phase 3** — Batch runner. Hold the port open, poll `reset()` to detect insertion,
   capture case serial, scan, write JSON, idle, next. One bad battery must not end the run.
-- **Phase 4** — JSON to one-page PDF, as a separate step from scanning so reports can be
-  re-rendered without re-scanning.
+  `tools/holder.py` is the working skeleton — port held, break asserted, commands driven
+  from outside, verified against hardware for zero dumb-charge increments.
+- **Phase 4** — **The GUI.** Connect a pack, see its health. Reads the Phase 2 JSON, or
+  drives Phase 3 live. Must show wear honestly, flag sentinels rather than printing them
+  as numbers, and never surface `health()`'s one-size-fits-all error string. Design work,
+  not just plumbing — see the Goal.
+- **Phase 5** — One-page printable PDF from the same JSON, for tagging and shelving.
 
 ## Hardware (verified 2026-09-04)
 
@@ -311,11 +327,12 @@ formatting run with no pack attached. Printed output is pinned to
   This decides between a USB scanner and manual entry.
 - ~~Which USB-serial chip is in the adapter, and is it genuine?~~ Answered 2026-09-04:
   genuine FT232R. See Hardware.
-- Does the FTDI line hold low after the port closes? See landmine 7. Unmeasured.
-- What does a pack with **no wifi logo** return — clean refusal, sentinels, or silence?
-  Scott reports his testing only worked on packs new enough to carry the logo, so this is
-  a hard filter on the pile, not an edge case. Phase 3 must tell apart three failures that
-  look alike: no diagnostic support, dead pack, bad connection.
+- ~~What does a pack with **no wifi logo** return?~~ Answered 2026-09-04: silence, zero
+  bytes. See above. Phase 3 still has to tell apart three failures that look alike: no
+  diagnostic support, dead pack, bad connection — and the first two share a signature.
+- What does the GUI actually need to show, and to whom? A Sector67 member triaging a pack
+  wants a verdict and the two or three numbers behind it. We want everything. Those are
+  different screens; decide before laying anything out.
 - Health thresholds are deliberately undecided. Scan the pile first, look at the actual
   distribution of imbalance and cycle counts, then set cutoffs. Inventing thresholds up
   front produces confident-looking nonsense. **Partially answered 2026-09-04**: imbalance
