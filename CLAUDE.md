@@ -35,8 +35,9 @@ Single file `m18.py`, ~1030 lines, one `M18` class. Dependencies: `pyserial==3.5
 bit-reversed on the wire (see `send()` / `read_response()`).
 
 - `data_id[]` is the register table: `[addr, len, type, label]`. Types are `uint`,
-  `date`, `hhmmss`, `ascii`, `sn`, `adc_t`, `dec_t`, `cell_v`. About 90 entries, many
-  still labelled Unknown.
+  `date`, `hhmmss`, `ascii`, `sn`, `adc_t`, `dec_t`, `cell_v`. **184 entries** (the
+  "about 90" in earlier notes was wrong), many still labelled Unknown. `health()` reads
+  41 of them; `tools/dump.py` reads all 184.
 - `data_matrix[]` is the dummy-read list that refreshes the `0x9000` RAM block before
   real reads happen.
 - **`health_data()` returns the derived values; `health()` formats and prints them.**
@@ -103,10 +104,12 @@ bit-reversed on the wire (see `send()` / `read_response()`).
   from a sentinel is never marked more trustworthy than the register it came from.
   Output verified byte-identical across 1000 randomised packs. Date fields are
   `datetime` objects, so JSON needs `default=str`.
-- **Phase 2** — Capture all ~90 registers to JSON per battery, not just the 41 that
-  `health()` uses. Storage is free; re-handling 40 batteries later is not. Absent and
-  sentinel must stay **distinct** states. `tools/capture.py` already writes most of this
-  shape; it needs widening from `health_data()` to the full register table.
+- **Phase 2** — ✅ Done 2026-09-04, `tools/dump.py`. All **184** registers (not ~90 —
+  `data_id` has 184 entries) to JSON per battery, each with an explicit state and its raw
+  payload bytes. 24s per pack on hardware. `to_array()` reproduces
+  `read_id(output="array")` exactly, so `health_data()` runs off the same sample instead
+  of re-reading; a test pins that equivalence across all eight data types. Verified
+  against two packs of different firmware generations — see "What the full dump found".
 - **Phase 3** — Batch runner. Hold the port open, poll `reset()` to detect insertion,
   capture case serial, scan, write JSON, idle, next. One bad battery must not end the run.
   `tools/holder.py` is the working skeleton — port held, break asserted, commands driven
@@ -147,8 +150,9 @@ Two findings from that first read, both of which affect later phases:
   reading `"Undefined-----------"`. These are *not* sentinels — they are genuinely
   unreadable. This is the exact case where the old code raised mid-report and
   `health_data()` continues with `None`. That defensive path is not theoretical; it fires
-  on the first real battery. Phase 2 must record absent and sentinel as **distinct**
-  states, never collapse both to null.
+  on the first real battery. Phase 2 records absent and sentinel as **distinct** states
+  and never collapses both to null. Since resolved: **all 13 are labelled "(Forge)"** —
+  they are Forge-only fields on a non-Forge pack, not a fault. See below.
 
 Also note `Time idling on charger: 7746:09:12` (322 days) on the reference pack is a
 real accumulated value, not a sentinel. Reports must not flag it.
@@ -173,10 +177,12 @@ first triage step. Transcript: `data/captures/no_wifi_logo_no_response.txt`.
 | Signature | Meaning |
 | --- | --- |
 | `reset()` False, `in_waiting == 0` | no diagnostic support (or bad connection) |
-| `reset()` True, then sentinel values | dead pack — BMS talks, data is garbage |
+| `reset()` True, sentinels in the **health** registers | dead pack — BMS talks, data is garbage |
 | `reset()` True, clean values | good pack |
 
-Note the first row is still two states sharing one signature. Since a no-logo pack is
+Sentinels *outside* the health registers are normal on newer firmware and mean nothing
+about pack condition — see "What the full dump found". Note the first row is still two
+states sharing one signature. Since a no-logo pack is
 identified visually before it is ever connected, the runner should record the logo
 observation as operator input, and then treat silence from a pack that *has* a logo as a
 connection fault worth retrying.
@@ -186,6 +192,51 @@ connection fault worth retrying.
 landmine 3's division-by-zero produced. The broad `except` flattens every distinct
 failure into one misleading sentence. Across 40 packs that sends you chasing adapter
 faults that do not exist. Phase 3 needs its own error path; do not reuse `health()`'s.
+
+## What the full dump found (2026-09-04)
+
+Two packs read end to end with `tools/dump.py`, one from each firmware generation.
+24 seconds per pack, so all 40 is about 16 minutes of wire time.
+
+| | 4769294 (type 38, 2018) | 6278308 (type 424, 2024) |
+| --- | --- | --- |
+| ok | 171 | 89 |
+| sentinel | 0 | **91** |
+| absent | 13 | 4 |
+
+Derived health values were identical to the morning's `health()`-only reads on both packs
+apart from the battery's own clock, and the dumb-charge counters did not move (4769294
+`82, 5, (87)` before and after; 6278308 `19, 2, (21)`). The heavier read costs nothing.
+
+### Sentinels do not mean a dead pack
+
+This is the correction that matters. **91 of 184 registers read all-ones on a perfectly
+healthy 2024 pack.** They are contiguous, all in the `0x9000`/`0x9100` RAM block from
+`0x909C` up: the high-current histogram tail (150A through 200A+) and the whole
+charge-started / charge-ended voltage histogram. All six 2018-2020 packs (types 38 and 40)
+populate every one of them; the single type-424 pack populates none.
+
+So the Phase 3 triage table's `reset()` True + sentinels ⇒ dead pack **only holds for the
+41 health registers**. Applied to the whole table it condemns every modern pack in the
+pile. Scope it, and treat a sentinel in the RAM block as "this firmware does not keep that
+statistic".
+
+The trade runs both ways. The type-424 pack answers **nine Forge registers the type-38
+packs leave absent** (`0x0015`, `0x0019`, `0x4000`, `0x4016`, `0x401B`, `0x6000`, `0x6002`,
+`0x6004`, `0x6008`). Newer firmware implements more of the Forge address space and less of
+the RAM histogram.
+
+### Consequences for the GUI
+
+- **A register's state is part of its value.** "not recorded by this firmware", "never
+  written", and "0" are three different things and must not render alike.
+- **The charge-start / charge-end voltage histograms only exist on the older packs.** They
+  are good data — they show how the pack was actually treated — but any screen built
+  around them is blank on anything made after ~2023.
+- Comparing packs across generations on RAM-block statistics is not valid. Cycles, Ah,
+  charge counts and the 10-200A buckets (registers 44-63) are populated on both, and are
+  the fields to build on. That agrees with the wear metrics chosen from the seven-pack
+  scan.
 
 ## Case serials
 
@@ -282,9 +333,14 @@ attached pack. That is exactly what corrupted 4769294. Use the holder.
 
 ### Still untested
 
-No dead pack was available. The sentinel path (`0xFFFF`, `0xFFFFFFFF`, `1193046:28:15`) is
-covered only by `tests/` fixtures and has never met hardware. If any pack in the wider pile
-returns sentinels, capture the raw output before anything else.
+No dead pack was available, so a pack whose *health* registers are all sentinels has never
+been on the bench. `tests/test_dump.py` exercises the all-ones case end to end in software
+and asserts that no derived field survives marked valid, but that is a fixture, not a
+battery. If any pack in the wider pile returns sentinels in the health registers, capture
+the raw output before anything else.
+
+(Sentinels in the RAM block are a different matter and turned out to be routine — see
+"What the full dump found".)
 
 ## Fork state (2026-09-01)
 

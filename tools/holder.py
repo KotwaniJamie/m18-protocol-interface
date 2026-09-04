@@ -87,7 +87,8 @@ def main():
                     say(f"RESULT: {dump.summarise(doc)}")
                     say(f"        redlink={g('charge_count_redlink')} "
                         f"dumb={g('charge_count_dumb')} total={g('charge_count_total')} "
-                        f"imbal={g('cell_imbalance_mv')}mV cycles={g('discharge_cycles')}")
+                        f"imbal={g('cell_imbalance_mv')}mV "
+                        f"cycles={g('total_discharge_cycles')}")
                     if doc["flagged"]:
                         say(f"        flagged: {doc['flagged']}")
                     with (HERE.parent / "data" / "captures" / "index.jsonl").open("a") as f:
