@@ -1,17 +1,26 @@
-"""Phase 0 hand-scan helper: capture one pack in a single process.
+"""Hand-scan helper: capture one pack in a single process.
 
 Opens the port ONCE and does everything inside it, so TX never reverts to
 idle-high between commands with a pack attached (see landmine 7).
 
     .venv/bin/python tools/capture.py --case-serial 1234567 --note "wifi logo"
 
-Writes data/captures/pack_<e-serial>_{health,ss}.txt and a meta line.
+Writes, all from one sample of the pack:
+    data/captures/pack_<e-serial>_full.json  -- all 184 registers (Phase 2)
+    data/captures/pack_<e-serial>_health.txt -- health() as a human reads it
+    data/captures/pack_<e-serial>_ss.txt     -- the raw spreadsheet column
+
 Falls back loudly: any failure is printed and recorded, never swallowed.
+For a batch of packs use tools/holder.py instead -- this opens and closes
+the port each run, and closing it with a pack attached costs a dumb charge.
 """
 import argparse, contextlib, io, json, pathlib, sys, traceback
 from datetime import datetime
 
-sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+HERE = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE.parent))
+sys.path.insert(0, str(HERE))
+import dump
 from m18 import M18
 
 DEFAULT_PORT = "/dev/cu.usbserial-A94AM9KK"
@@ -42,13 +51,15 @@ def main():
         m.idle()
         return 1
 
-    # 2. structured data, for the e-serial and for later use
-    eser, data = "unknown", None
+    # 2. every register, once. Everything below is derived from this one
+    # sample, so the .json and the .txt files can never disagree.
+    eser, data, doc = "unknown", None, None
     try:
-        data = m.health_data()
-        v = data.get("e_serial", {}).get("value")
-        if v:
-            eser = str(v)
+        records = dump.dump_registers(m)
+        doc = dump.build_document(m, records, args.port, args.case_serial, args.note)
+        data = doc.get("health")
+        if doc.get("e_serial"):
+            eser = str(doc["e_serial"])
     except Exception:
         traceback.print_exc()
 
@@ -62,22 +73,22 @@ def main():
             buf.write("\n" + traceback.format_exc())
         return buf.getvalue()
 
-    # health() calls health_data() itself; let it re-read and the rendered text
-    # would come from a DIFFERENT sample than the JSON (cell ADC drifts ~5mV
-    # between reads). Pin it to the dict we already captured so the .json and
-    # the .txt describe one single measurement.
+    # health() and read_id() would each re-read the pack, and cell ADC drifts
+    # about 5 mV between reads -- the rendered text would then describe a
+    # different sample than the JSON. Pin both to the dump we already have.
     if data is not None:
         m.health_data = lambda force_refresh=True, _d=data: _d
+    if doc is not None:
+        m.read_id = lambda *a, _r=records, **k: dump.to_array(_r)
     health_txt = grab(lambda: m.health(force_refresh=False))
-    ss_txt = grab(lambda: m.read_id(force_refresh=False, output="raw"))
+    ss_txt = "\n".join(r["text"] for r in records) if doc is not None else ""
     m.idle()
 
     base = OUT / f"pack_{eser}"
     (base.with_name(base.name + "_health.txt")).write_text(health_txt)
     (base.with_name(base.name + "_ss.txt")).write_text(ss_txt)
-    if data is not None:
-        (base.with_name(base.name + ".json")).write_text(
-            json.dumps(data, indent=2, default=str))
+    if doc is not None:
+        dump.write_document(doc, OUT)
 
     meta = {"captured": stamp, "e_serial": eser,
             "case_serial": args.case_serial, "note": args.note}
@@ -85,7 +96,9 @@ def main():
         f.write(json.dumps(meta) + "\n")
 
     print(health_txt)
-    print(f"--- saved pack_{eser}_{{health,ss}}.txt + .json ---")
+    if doc is not None:
+        print(dump.summarise(doc))
+    print(f"--- saved pack_{eser}_{{health,ss}}.txt + _full.json ---")
     print(f"--- meta: {meta} ---")
     return 0
 
