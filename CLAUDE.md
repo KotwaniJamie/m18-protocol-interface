@@ -111,9 +111,8 @@ bit-reversed on the wire (see `send()` / `read_response()`).
   `read_id(output="array")` exactly, so `health_data()` runs off the same sample instead
   of re-reading; a test pins that equivalence across all eight data types. Verified
   against two packs of different firmware generations — see "What the full dump found".
-- **Phase 3** — Batch runner. 🔨 **Built 2026-09-28, `tools/runner.py`; hardware test
-  pending.** See "Phase 3: the batch runner" below for design, status, and the remaining
-  step.
+- **Phase 3** — Batch runner. ✅ **Built and hardware-cleared 2026-09-28,
+  `tools/runner.py`.** First real batch run still to do. See "Phase 3: the batch runner".
 - **Phase 4** — **The GUI.** Connect a pack, see its health. Reads the Phase 2 JSON, or
   drives Phase 3 live. Must show wear honestly, flag sentinels rather than printing them
   as numbers, and never surface `health()`'s one-size-fits-all error string. Design work,
@@ -297,13 +296,14 @@ tool for one-off experiments.
 | Step | State |
 | --- | --- |
 | 1. Runner + hardware-free tests | ✅ done — 85 tests pass; smoke-run against the real adapter with no pack attached |
-| 2. Repeated-probe test on pack 2 (`tools/poll_test.py`) | ⏳ **next — needs pack 2 attached** |
-| 3. Enable `--auto-remove` if step 2 passes | blocked on 2 |
-| First real batch run | after 2 |
+| 2. Repeated-probe test on pack 2 | ✅ **passed** — 200/200 seen, 0 misses, counters `19, 2, (21)` before and after |
+| 3. Automatic removal detection | ✅ now the default; `--enter-to-remove` to confirm by hand |
+| First real batch run, operator at the keyboard | ⏳ next |
 
-Until step 2 passes, run **without** `--auto-remove`: removal is confirmed by pressing
-Enter, and the runner knocks on an attached pack once per confirmation, which is the same
-exposure as every capture so far.
+Step 2 ran as `holder.py probes 200` (same `probe_latency()` the runner uses, 1 s apart,
+0.3 s timeout): reply latency 201-219 ms, never missed once, so two misses in a row —
+the removal rule — cannot happen on an attached pack by chance. Log:
+`data/captures/poll_test_2026-09-28.txt`.
 
 ### Insertion polling — `probe()`
 

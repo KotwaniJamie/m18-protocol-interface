@@ -1,5 +1,9 @@
 """Step 2 of Phase 3: does knocking on an ATTACHED battery cost a dumb charge?
 
+PASSED 2026-09-28 (run via `holder.py probes 200`, same probe_latency()):
+200/200 seen, reply 201-219 ms, counters 19, 2, (21) before and after.
+Kept for re-running against other packs or after changing the probe.
+
 The runner's automatic removal detection probes a connected pack about once
 a second until it disappears. Each probe lets the line go high for ~0.35 s --
 under the 0.48 s threshold, but the counter has never been watched across

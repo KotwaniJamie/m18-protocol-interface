@@ -10,7 +10,7 @@ in CLAUDE.md). For each battery:
     2. read all 184 registers             -- tools/dump.py, in a background thread
     3. ask for the case sticker meanwhile -- checked against the battery's own date
     4. say what happened, in plain words  -- classify(), never health()'s one sentence
-    5. wait for it to be removed          -- Enter to confirm, or --auto-remove
+    5. notice it was removed              -- probing; --enter-to-remove to confirm by hand
 
 While waiting for a battery, type a command and press Enter:
     nologo <sticker>  -- record a pack with no wifi logo (it cannot be read)
@@ -572,16 +572,18 @@ def install_signal_handlers():
 def main():
     ap = argparse.ArgumentParser(description="Phase 3 batch runner")
     ap.add_argument("--port", default=DEFAULT_PORT)
-    ap.add_argument("--auto-remove", action="store_true",
-                    help="detect removal by probing, instead of pressing Enter "
-                         "(only once the repeated-probe test has passed)")
+    # Removal is detected by probing. Cleared by the repeated-probe test on
+    # 2026-09-28: 200 knocks on attached pack 2, 200 seen, counters unchanged
+    # (data/captures/poll_test_2026-09-28.txt).
+    ap.add_argument("--enter-to-remove", action="store_true",
+                    help="confirm each removal by pressing Enter instead of detecting it")
     args = ap.parse_args()
 
     install_signal_handlers()
     from m18 import M18
     m = M18(args.port)       # __init__ asserts idle()
     m.idle()
-    Runner(m, Terminal(), args.port, auto_remove=args.auto_remove).run()
+    Runner(m, Terminal(), args.port, auto_remove=not args.enter_to_remove).run()
     return 0
 
 

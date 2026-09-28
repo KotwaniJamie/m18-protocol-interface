@@ -1,0 +1,19 @@
+[15:49:50] holder up on /dev/cu.usbserial-A94AM9KK. TX held LOW. waiting for commands.
+[15:50:44] CMD: probes 5
+[15:50:45] probing 5 times, 1.0s apart, timeout 0.3s
+[15:50:54] RESULT: seen 5/5, longest miss run 0, latency ms min 204 median 208 max 209
+[15:51:03] CMD: count
+[15:51:14] RESULT: redlink=19 dumb=2 total=21 imbal=17mV eserial=6278308
+[15:51:17] CMD: probes 200
+[15:51:18] probing 200 times, 1.0s apart, timeout 0.3s
+[15:52:03]   25/200 seen 25
+[15:52:48]   50/200 seen 50
+[15:53:34]   75/200 seen 75
+[15:54:20]   100/200 seen 100
+[15:55:05]   125/200 seen 125
+[15:55:51]   150/200 seen 150
+[15:56:37]   175/200 seen 175
+[15:57:23]   200/200 seen 200
+[15:57:24] RESULT: seen 200/200, longest miss run 0, latency ms min 201 median 207 max 219
+[15:57:33] CMD: count
+[15:57:45] RESULT: redlink=19 dumb=2 total=21 imbal=17mV eserial=6278308
