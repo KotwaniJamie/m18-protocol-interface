@@ -304,6 +304,12 @@ class TestDocument(unittest.TestCase):
         self.assertFalse(doc["answered"])
         self.assertTrue(self._doc()["answered"])
 
+    def test_all_ones_pack_answered(self):
+        """A dead pack talks. Silence and blanks are different failures."""
+        dead = FakePack({i: b"\xff" * m18mod.data_id[i][1]
+                         for i in range(len(m18mod.data_id))})
+        self.assertTrue(dump.build_document(dead, dump.dump_registers(dead))["answered"])
+
     def test_all_ones_pack_yields_no_valid_health_field(self):
         """The dead-pack path, which has never met real hardware.
 

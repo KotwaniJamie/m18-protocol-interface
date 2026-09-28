@@ -171,13 +171,38 @@ def refresh(m):
     time.sleep(0.1)
 
 
-def dump_registers(m, force_refresh=True):
-    """Every register in data_id, in order. One pass, one sample."""
+# A register the pack refuses comes back as an instant 82 04, not silence --
+# that is what all 13 "absent" Forge registers did on hardware. Silence means
+# the pack is gone. Each silent register costs the full 0.8s read timeout, so
+# a battery pulled on register 20 would otherwise spend two minutes timing out
+# on the other 164 before anyone learned it had been unplugged.
+GIVE_UP_AFTER = 5
+NOT_ATTEMPTED = "not attempted: connection lost"
+
+
+def dump_registers(m, force_refresh=True, give_up_after=GIVE_UP_AFTER):
+    """Every register in data_id, in order. One pass, one sample.
+
+    Stops early after `give_up_after` consecutive silent registers and marks
+    the rest ABSENT with error NOT_ATTEMPTED, so a dropped connection is fast
+    and obvious rather than slow and ambiguous.
+    """
     m.reset()
     if force_refresh:
         refresh(m)
     m.reset()
-    recs = [read_register(m, i) for i in range(len(data_id))]
+    recs, silent = [], 0
+    for i in range(len(data_id)):
+        if give_up_after and silent >= give_up_after:
+            addr, length, data_type, label = data_id[i]
+            recs.append({"id": i, "addr": f"0x{addr:04X}", "length": length,
+                         "type": data_type, "label": label, "state": ABSENT,
+                         "raw": None, "value": None, "text": "------", "flags": [],
+                         "error": NOT_ATTEMPTED})
+            continue
+        rec = read_register(m, i)
+        silent = silent + 1 if (rec["state"] == ABSENT and "error" in rec) else 0
+        recs.append(rec)
     m.idle()
     return recs
 
@@ -260,8 +285,10 @@ def build_document(m, records, port="", case_serial="", note=""):
         "state_counts": counts,
         # health() below is a dict of all-invalid fields when nothing
         # answered, which reads like a measurement unless you check every
-        # "valid". This says it in one place instead.
-        "answered": counts.get(OK, 0) > 0,
+        # "valid". This says it in one place instead. "Answered" means bytes
+        # came back -- a dead pack answering all-ones did answer, and must
+        # not be mistaken for one that went silent.
+        "answered": any(s != ABSENT for s in counts),
         "flagged": [{"id": r["id"], "label": r["label"], "flags": r["flags"]}
                     for r in records if r["flags"]],
         "health": health,
@@ -269,9 +296,9 @@ def build_document(m, records, port="", case_serial="", note=""):
     }
 
 
-def write_document(doc, out_dir=OUT):
+def write_document(doc, out_dir=OUT, name=None):
     out_dir.mkdir(parents=True, exist_ok=True)
-    name = f"pack_{doc.get('e_serial') or 'unknown'}_full.json"
+    name = name or f"pack_{doc.get('e_serial') or 'unknown'}_full.json"
     path = out_dir / name
     path.write_text(json.dumps(doc, indent=2, default=str))
     return path

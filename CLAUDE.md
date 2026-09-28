@@ -111,10 +111,9 @@ bit-reversed on the wire (see `send()` / `read_response()`).
   `read_id(output="array")` exactly, so `health_data()` runs off the same sample instead
   of re-reading; a test pins that equivalence across all eight data types. Verified
   against two packs of different firmware generations — see "What the full dump found".
-- **Phase 3** — Batch runner. Hold the port open, poll `reset()` to detect insertion,
-  capture case serial, scan, write JSON, idle, next. One bad battery must not end the run.
-  `tools/holder.py` is the working skeleton — port held, break asserted, commands driven
-  from outside, verified against hardware for zero dumb-charge increments.
+- **Phase 3** — Batch runner. 🔨 **Built 2026-09-28, `tools/runner.py`; hardware test
+  pending.** See "Phase 3: the batch runner" below for design, status, and the remaining
+  step.
 - **Phase 4** — **The GUI.** Connect a pack, see its health. Reads the Phase 2 JSON, or
   drives Phase 3 live. Must show wear honestly, flag sentinels rather than printing them
   as numbers, and never surface `health()`'s one-size-fits-all error string. Design work,
@@ -284,6 +283,95 @@ captures across two sessions, zero increments.** The holder is not a nicety.
   charge counts and the 10-200A buckets (registers 44-63) are populated on both, and are
   the fields to build on. That agrees with the wear metrics chosen from the seven-pack
   scan.
+
+## Phase 3: the batch runner (2026-09-28)
+
+    .venv/bin/python tools/runner.py
+
+One process, port held low throughout. Plug a battery in, it reads; type the sticker
+while it reads; it reports; unplug, press Enter; next. `holder.py` stays as the manual
+tool for one-off experiments.
+
+### Status
+
+| Step | State |
+| --- | --- |
+| 1. Runner + hardware-free tests | ✅ done — 81 tests pass; smoke-run against the real adapter with no pack attached |
+| 2. Repeated-probe test on pack 2 (`tools/poll_test.py`) | ⏳ **next — needs pack 2 attached** |
+| 3. Enable `--auto-remove` if step 2 passes | blocked on 2 |
+| First real batch run | after 2 |
+
+Until step 2 passes, run **without** `--auto-remove`: removal is confirmed by pressing
+Enter, and the runner knocks on an attached pack once per confirmation, which is the same
+exposure as every capture so far.
+
+### Insertion polling — `probe()`
+
+A knock once a second: the `reset()` sync handshake. Answer = a battery arrived.
+
+**It is not `M18.reset()`, on purpose.** `reset()` leaves the line high while it waits for
+the sync reply, and it waits the port's full 0.8 s timeout. With nothing attached that is
+harmless — but a battery plugged in *during* that wait sees 0.3 + 0.8 = 1.1 s of high,
+more than twice the 0.48 s threshold. `probe()` uses a 0.05 s reply timeout (the reply is
+one byte, ~2 ms at 4800 baud) and forces the line low in a `finally`, so the worst case is
+about 0.35 s. `test_high_time_stays_under_the_dumb_charge_threshold` pins this, and fails
+if the timeout is put back to 0.8 s (checked by mutation).
+
+Why eight full dumps never cost a charge, found while building this: the 13 "absent"
+registers are **not silence** on hardware. They come back as an instant `82 04` refusal
+frame, so the line never sits high waiting on them.
+
+### Operator entry — the sticker
+
+- Asked **while the read runs** (background thread), so typing costs nothing.
+- Format `XXXXXXXX YYMMDD NNNNNNN`, case-insensitive, spaces optional, letters kept. An
+  odd-shaped sticker is accepted after a confirmation (other models may differ). `?`
+  records `UNREADABLE`.
+- **YYMMDD is checked against the battery's own manufacture date**, ±1 day. Mismatch →
+  warning, retype or keep. All seven real captures pass this check (tested).
+- A repeat e-serial is never overwritten: saved as `pack_<es>_full_<timestamp>.json`
+  alongside the original, or skipped.
+- `nologo <sticker>` logs a pack that cannot be read, so the inventory is complete.
+
+### The error path — `classify()`
+
+| Result | Rule |
+| --- | --- |
+| `DROPPED` | nothing came back after sync, **or** any non-Forge register failed. Every register that failed on either firmware generation was Forge-labelled, so anything else means the connection broke. Not saved; the sticker is offered again on reseat. |
+| `DEAD` | e-serial register, or ≥5 of the 41 health registers, all-ones |
+| `FLAGGED` | 1-4 blank health registers, partial cell sentinel, unknown battery type, or imbalance > 30 mV (with balancing advice when charges < 20) |
+| `OK` | none of the above |
+
+Against the seven real captures: six `OK`, and `5950263` `FLAGGED` with the
+charge-it-first advice — exactly what CLAUDE.md concluded by hand. The 30 mV line is
+provisional, a "look at me" not a verdict; cutoffs still wait for the full pile.
+
+Every battery gets a line in `data/runs/run_<timestamp>.jsonl`, and an exception on one
+pack is logged as `ERROR` and the run continues.
+
+`dump_registers()` now gives up after 5 consecutive *silent* registers and marks the rest
+`not attempted: connection lost`. Unplugged at register 60, the old code would have spent
+about two minutes timing out on the remaining 124 before anyone knew.
+
+### Refusing to close with a battery attached — `close_safely()`
+
+`quit`, Ctrl+C, or the input closing all end in `close_safely()`, which probes twice and
+**will not close the port while a pack answers.** Ctrl+C during the refusal is ignored.
+If stdin is gone (nobody to press Enter) it keeps holding the line low and polls until the
+pack is removed, then closes. A background read is always joined before anything else
+touches the port. Mutation-checked: removing the attached check fails three tests.
+
+Its one blind spot: a no-logo pack never answers, so it cannot be detected. The runner
+says so on exit.
+
+### Bugs caught while building
+
+- **A dead pack was classified `DROPPED`.** Phase 2's `answered` counted only `ok`
+  registers, so a pack answering every question with all-ones looked silent. Now means
+  "any bytes came back". Would have sent a dead pack back for endless reseating.
+- EOF on stdin during the close refusal would have fallen straight through to closing the
+  port — the exact outcome `close_safely()` exists to prevent.
+- A non-Ctrl+C error during sticker entry left the background read still using the port.
 
 ## Case serials
 
