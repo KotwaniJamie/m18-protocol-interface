@@ -1,0 +1,1 @@
+{"time": "2026-09-28T18:53:12", "result": "FLAGGED", "reasons": ["cells 67 mV apart on only 8 charges -- may just need balancing; charge fully 2-3 times and re-scan before judging"], "case_serial": "B41VDCCA 200521 0670871", "e_serial": 5950263, "file": "pack_5950263_full_20260928-185310.json", "state_counts": {"ok": 171, "absent": 13}, "read_seconds": 24.5}

@@ -12,3 +12,4 @@
 {"captured": "2026-09-28T15:09:36", "e_serial": 4769289, "case_serial": "B41VDCBA 180828 1431973", "note": "full dump via holder.py"}
 {"captured": "2026-09-28T15:11:53", "e_serial": 5950263, "case_serial": "B41VDCCA 200521 0670871", "note": "full dump via holder.py"}
 {"captured": "2026-09-28T15:13:52", "e_serial": 5133886, "case_serial": "G29JDCBC 180727 3988041", "note": "full dump via holder.py"}
+{"captured": "2026-09-28T18:53:01", "e_serial": 5950263, "case_serial": "B41VDCCA 200521 0670871", "note": "runner: FLAGGED"}

@@ -112,7 +112,8 @@ bit-reversed on the wire (see `send()` / `read_response()`).
   of re-reading; a test pins that equivalence across all eight data types. Verified
   against two packs of different firmware generations — see "What the full dump found".
 - **Phase 3** — Batch runner. ✅ **Built and hardware-cleared 2026-09-28,
-  `tools/runner.py`.** First real batch run still to do. See "Phase 3: the batch runner".
+  `tools/runner.py`.** First operator run done; ready for the pile. See "Phase 3: the
+  batch runner".
 - **Phase 4** — **The GUI.** Connect a pack, see its health. Reads the Phase 2 JSON, or
   drives Phase 3 live. Must show wear honestly, flag sentinels rather than printing them
   as numbers, and never surface `health()`'s one-size-fits-all error string. Design work,
@@ -298,7 +299,15 @@ tool for one-off experiments.
 | 1. Runner + hardware-free tests | ✅ done — 85 tests pass; smoke-run against the real adapter with no pack attached |
 | 2. Repeated-probe test on pack 2 | ✅ **passed** — 200/200 seen, 0 misses, counters `19, 2, (21)` before and after |
 | 3. Automatic removal detection | ✅ now the default; `--enter-to-remove` to confirm by hand |
-| First real batch run, operator at the keyboard | ⏳ next |
+| First real run, operator at the keyboard | ✅ 2026-09-28 — one pack, end to end |
+
+**First real run** (`data/runs/run_20260928-185147.jsonl`): Jamie ran the runner in their
+own terminal on 5950263. Detected on insertion, sticker typed during the read, duplicate
+caught and saved as a re-scan beside the original, `FLAGGED` with the balancing advice,
+removal detected automatically, `quit` closed cleanly with no pack attached. 24.5 s read.
+Counters `5, 3, (8)` — unchanged — and the cells match September to within one reading
+(`3950, 3955→3960, 4017, 3997, 3988`). Not yet exercised on hardware: the wrong-sticker
+warning and the refusal to quit with a pack attached (the latter proven via `poll_test`).
 
 Step 2 ran as `holder.py probes 200` (same `probe_latency()` the runner uses, 1 s apart,
 0.3 s timeout): reply latency 201-219 ms, never missed once, so two misses in a row —
