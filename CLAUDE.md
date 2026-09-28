@@ -16,7 +16,36 @@ Two delivery surfaces, one data layer:
 Both render from the same JSON. Scanning, storing, and presenting stay separate so a
 report can be re-rendered without re-handling the battery.
 
-## Upstream status (verified 2026-09-01)
+**It is going to be public (decided 2026-09-28).** An open-source program on GitHub for
+anyone with an M18 pack and an adapter — not just Sector67. See "Public release" below;
+the licence is a blocker.
+
+## Public release (2026-09-28)
+
+**Blocker: upstream has no licence.** Re-verified 2026-09-28: still no LICENSE file;
+issue #11 open with one comment (2025-11-27, asking whether MIT), no maintainer reply;
+last push 2025-10-13. Unlicensed means all rights reserved — everything here imports
+`m18.py` and depends on its `data_id` table, so we cannot grant anyone the right to use
+it. Our own code (`tools/`, `tests/`, the GUI) is ours to license, but is inert without
+it. Encouraging: the author's other project, `mnh-jansson/open-battery-information`, is
+**MIT**. Plan: ask on issue #11, alongside opening the `fix-divzero` / `health-data` PRs.
+Nothing is posted upstream without Jamie's approval.
+
+What changes because strangers will run it:
+
+- **No hardcoded port.** `DEFAULT_PORT` is Jamie's adapter. Auto-detect, and work on
+  Windows — upstream's `.bat` files say that is where most users are.
+- **Adapter compatibility is back (landmine 5).** Clone FT232s and CP2102s emulate break
+  via DTR; break condition is the entire dumb-charge protection. Identify the chip by
+  VID/PID and warn loudly on anything unverified.
+- **GUI audience is decided:** a stranger with one battery. Verdict first, in plain
+  words, with the two or three numbers behind it; all 184 registers one click away.
+- **Install.** "Python 3.13 and a venv" loses most users; eventually a packaged app.
+- **The fork is already public**, including `sector67` — this file (names Scott, internal
+  notes) and `data/captures` (Sector67's pack serials). Deliberate or not is Jamie's call;
+  undecided as of 2026-09-28.
+
+## Upstream status (verified 2026-09-01; licence re-checked 2026-09-28, see above)
 
 - Last commit `2025-10-13`. Dormant roughly ten months.
 - 951 stars, 153 forks, 13 open issues.
