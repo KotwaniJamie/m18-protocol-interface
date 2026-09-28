@@ -296,7 +296,7 @@ tool for one-off experiments.
 
 | Step | State |
 | --- | --- |
-| 1. Runner + hardware-free tests | ✅ done — 84 tests pass; smoke-run against the real adapter with no pack attached |
+| 1. Runner + hardware-free tests | ✅ done — 85 tests pass; smoke-run against the real adapter with no pack attached |
 | 2. Repeated-probe test on pack 2 (`tools/poll_test.py`) | ⏳ **next — needs pack 2 attached** |
 | 3. Enable `--auto-remove` if step 2 passes | blocked on 2 |
 | First real batch run | after 2 |
@@ -309,13 +309,11 @@ exposure as every capture so far.
 
 A knock once a second: the `reset()` sync handshake. Answer = a battery arrived.
 
-**It is not `M18.reset()`, on purpose.** `reset()` leaves the line high while it waits for
-the sync reply, and it waits the port's full 0.8 s timeout. With nothing attached that is
-harmless — but a battery plugged in *during* that wait sees 0.3 + 0.8 = 1.1 s of high,
-more than twice the 0.48 s threshold. `probe()` uses a 0.05 s reply timeout (the reply is
-one byte, ~2 ms at 4800 baud) and forces the line low in a `finally`, so the worst case is
-about 0.35 s. `test_high_time_stays_under_the_dumb_charge_threshold` pins this, and fails
-if the timeout is put back to 0.8 s (checked by mutation).
+**It is not `M18.reset()`, on purpose.** `reset()` waits up to the port's full 0.8 s for
+the sync reply with the line high. With nothing attached that is harmless — but a battery
+plugged in *during* a silent wait sees 0.8 s of unbroken high, past the 0.48 s threshold.
+`probe()` waits at most `PROBE_TIMEOUT` (0.3 s — see the measurement below) and forces
+the line low in a `finally`.
 
 Why eight full dumps never cost a charge, found while building this: the 13 "absent"
 registers are **not silence** on hardware. They come back as an instant `82 04` refusal
@@ -336,8 +334,30 @@ Two safety gaps that attempt exposed, both fixed:
   nothing. SIGTERM skips every `finally`. Both now raise `KeyboardInterrupt` and go
   through `close_safely()`. It was stopped by SIGTERM only after the pack was unplugged.
 
-Pack 2 took about 30 s of 0.35 s-high knocks during that attempt; its first counter read
-on the retry says whether that cost anything (September baseline `19, 2, (21)`).
+0.15 s failed the same way. So it was measured (`holder.py latency 20`, pack 2):
+
+| | min | median | max |
+| --- | --- | --- | --- |
+| sync reply latency | 201 ms | 208 ms | 215 ms |
+| line high, stock `reset()`, end to end | 504 ms | 515 ms | 521 ms |
+
+**`PROBE_TIMEOUT` is now 0.3 s.** Pack 2's counters after ~140 failed knocks across both
+attempts: `19, 2, (21)` — unchanged from September.
+
+### What the counter actually responds to: *unbroken* high
+
+The second row is the important one. Every stock `reset()` on an attached pack holds the
+line high for ~515 ms end to end — **over** the 0.48 s threshold — and dozens of them,
+across every capture since September, have never cost a charge. The reason: the sync byte
+itself pulls the line low for its start bit, splitting the high into two stretches of
+about 0.3 s and 0.2 s. Neither reaches 0.48 s.
+
+So the hazard is **continuous** high. That fits every observation: the one real increment
+(4769294, and 4825661 between sessions) came from a port closing and the line resting high
+indefinitely. It also sets the probe's real constraint — the silent wait after the sync
+byte is the only stretch that grows with the timeout, so any timeout under ~0.45 s is
+safe, and 0.3 s leaves 85 ms over the slowest reply. Tests now model the byte splitting
+the high, fail at 0.5 s (too long) and at 0.2 s (misses the measured reply).
 
 ### Operator entry — the sticker
 

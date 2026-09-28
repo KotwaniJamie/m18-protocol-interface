@@ -86,6 +86,11 @@ class ProbePort:
         return len(self.pending)
 
     def write(self, data):
+        # Sending bytes pulls the line low for each start bit, ending the
+        # current unbroken high stretch -- which is what the pack counts.
+        if not self._break and self._high_since is not None:
+            self.high_spans.append(self.clock.t - self._high_since)
+            self._high_since = self.clock.t
         sync = bytes([m18mod.M18.reverse_bits(None, 0xAA)])
         if data == sync and self.pack.attached and self.pack.answers_sync:
             self.pending = sync
@@ -274,16 +279,20 @@ class TestProbe(RunnerCase):
     def test_high_time_stays_under_the_dumb_charge_threshold(self):
         """The safety property of the whole probe.
 
-        A battery plugged in mid-knock sees the line high for at most this long.
-        Upstream reset() waits the full 0.8 s read timeout while high:
-        0.3 + 0.8 = 1.1 s, well past 0.48 s. The probe caps it.
+        A battery plugged in mid-knock sees at most this much *unbroken* high.
+        The sync byte splits a knock into two stretches; the silent wait after
+        it is the one that grows with the timeout. Upstream reset() waits
+        0.8 s there, past 0.48 s. The probe caps it.
         """
         for attached in (True, False):
             pack = make_pack(self.clock, attached=attached)
             runner.probe(pack)
-            self.assertEqual(len(pack.port.high_spans), 1)
-            self.assertLess(pack.port.high_spans[0], 0.48,
-                            f"attached={attached}: high for {pack.port.high_spans[0]:.2f}s")
+            longest = max(pack.port.high_spans)
+            self.assertLess(longest, 0.48, f"attached={attached}: {longest:.2f}s unbroken high")
+
+    def test_timeout_covers_the_measured_reply(self):
+        """Pack 2 answered in 201-215 ms (holder.py latency, 2026-09-28)."""
+        self.assertGreater(runner.PROBE_TIMEOUT, 0.215)
 
     def test_reports_latency(self):
         pack = make_pack(self.clock)
@@ -320,6 +329,7 @@ class TestProbe(RunnerCase):
         pack = make_pack(self.clock, attached=False)
         pack.port.break_condition = False
         self.clock.sleep(0.3)
+        pack.port.write(b"\x55")           # the sync byte
         pack.port.read(1)                  # what reset() does: wait the full timeout
         pack.port.break_condition = True
         self.assertGreater(pack.port.high_spans[-1], 0.48)

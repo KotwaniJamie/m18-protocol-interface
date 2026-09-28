@@ -42,16 +42,24 @@ DATA = HERE.parent / "data"
 
 # --- detecting a battery ---------------------------------------------------
 
-# How long to wait for the sync reply. Upstream reset() waits the port's full
-# 0.8 s timeout, and the line sits HIGH for that whole wait -- harmless with
-# nothing attached, but a battery plugged in during that window sees
-# 0.3 + 0.8 = 1.1 s of high, past the 0.48 s dumb-charge threshold. Capped
-# here, the worst case is 0.3 + 0.15 = 0.45 s.
+# How long to wait for the sync reply.
 #
-# 0.05 s was tried first and never saw a real pack (2026-09-28): the reply is
-# one byte, ~2 ms on the wire, but the pack and the FTDI latency timer take
-# longer than that. tools/poll_test.py records the real reply latency.
-PROBE_TIMEOUT = 0.15
+# Measured on pack 2 (2026-09-28, holder.py `latency 20`): the reply takes
+# 201-215 ms, every time. 0.05 s and then 0.15 s were tried first and never saw
+# the pack.
+#
+# What the dumb-charge counter responds to is *continuous* high. The sync byte
+# itself pulls the line low for its start bit, so a knock is two separate high
+# stretches: 0.3 s before the byte, then the wait for the reply. The stock
+# reset() waits up to 0.8 s -- harmless with a pack attached (it answers in
+# 0.2 s), but a battery plugged in during a silent wait sees 0.8 s unbroken,
+# past the 0.48 s threshold. At 0.3 s neither stretch exceeds 0.3 s, and the
+# slowest measured reply still has 85 ms to spare.
+#
+# (The same measurement shows every stock reset() on an attached pack holds
+# the line high ~515 ms end to end -- over 0.48 s -- and dozens of them have
+# never cost a charge. That is the evidence the byte breaks the count.)
+PROBE_TIMEOUT = 0.3
 POLL_INTERVAL = 1.0
 REMOVAL_MISSES = 2          # consecutive silent probes before a pack counts as removed
 
