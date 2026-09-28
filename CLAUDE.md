@@ -104,7 +104,8 @@ bit-reversed on the wire (see `send()` / `read_response()`).
   from a sentinel is never marked more trustworthy than the register it came from.
   Output verified byte-identical across 1000 randomised packs. Date fields are
   `datetime` objects, so JSON needs `default=str`.
-- **Phase 2** — ✅ Done 2026-09-04, `tools/dump.py`. All **184** registers (not ~90 —
+- **Phase 2** — ✅ Done 2026-09-04, `tools/dump.py`. Archive complete 2026-09-28: all
+  seven packs captured in full, `data/captures/pack_<e-serial>_full.json`. All **184** registers (not ~90 —
   `data_id` has 184 entries) to JSON per battery, each with an explicit state and its raw
   payload bytes. 24s per pack on hardware. `to_array()` reproduces
   `read_id(output="array")` exactly, so `health_data()` runs off the same sample instead
@@ -193,20 +194,29 @@ landmine 3's division-by-zero produced. The broad `except` flattens every distin
 failure into one misleading sentence. Across 40 packs that sends you chasing adapter
 faults that do not exist. Phase 3 needs its own error path; do not reuse `health()`'s.
 
-## What the full dump found (2026-09-04)
+## What the full dump found — all seven packs (2026-09-04, completed 2026-09-28)
 
-Two packs read end to end with `tools/dump.py`, one from each firmware generation.
-24 seconds per pack, so all 40 is about 16 minutes of wire time.
+Every pack read end to end with `tools/dump.py`. 24-25 seconds each, so all 40 is about
+17 minutes of wire time.
 
-| | 4769294 (type 38, 2018) | 6278308 (type 424, 2024) |
-| --- | --- | --- |
-| ok | 171 | 89 |
-| sentinel | 0 | **91** |
-| absent | 13 | 4 |
+| e-serial | type | ok | sentinel | absent | imbal | redlink | dumb | total | cycles |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 5133886 | 40 | 171 | 0 | 13 | 2 mV | 75 | 6 | 81 | 34.34 |
+| 4769294 | 38 | 171 | 0 | 13 | 11 mV | 82 | 5 | 87 | 33.16 |
+| 4769289 | 38 | 171 | 0 | 13 | 11 mV | 96 | 4 | 100 | 31.92 |
+| 4825661 | 40 | 171 | 0 | 13 | 9 mV | 88 | 9 | 97 | 31.41 |
+| 5133836 | 40 | 171 | 0 | 13 | 11 mV | 52 | 4 | 56 | 18.56 |
+| 6278308 | 424 | **89** | **91** | **4** | 22 mV | 19 | 2 | 21 | 4.33 |
+| 5950263 | 38 | 171 | 0 | 13 | 67 mV | 5 | 3 | 8 | 2.14 |
 
-Derived health values were identical to the morning's `health()`-only reads on both packs
-apart from the battery's own clock, and the dumb-charge counters did not move (4769294
-`82, 5, (87)` before and after; 6278308 `19, 2, (21)`). The heavier read costs nothing.
+**The register-state split is exactly by firmware generation, with zero variance inside a
+generation.** All six 2018-2020 packs (types 38 and 40) read 171/0/13. The one 2024 pack
+(type 424) reads 89/91/4. Nothing about pack condition, age within a generation, or use
+changes those numbers. That makes state counts a reliable generation fingerprint and a
+cheap sanity check on a capture.
+
+Derived health values matched the September `health()`-only reads apart from the battery's
+own clock, and no dumb-charge counter moved during any holder-driven capture.
 
 ### Sentinels do not mean a dead pack
 
@@ -225,6 +235,43 @@ The trade runs both ways. The type-424 pack answers **nine Forge registers the t
 packs leave absent** (`0x0015`, `0x0019`, `0x4000`, `0x4016`, `0x401B`, `0x6000`, `0x6002`,
 `0x6004`, `0x6008`). Newer firmware implements more of the Forge address space and less of
 the RAM histogram.
+
+### Re-scan after 24 days: the noise band holds, and 67 mV is not noise
+
+Seven packs re-read on 2026-09-28 against their 2026-09-04 baselines. Cycles and redlink
+counts were unchanged on all seven — none had been used or properly charged in between.
+Imbalance moved as follows:
+
+| pack | Sep 04 | Sep 28 | delta |
+| --- | --- | --- | --- |
+| 5133886 | 5 mV | 2 mV | −3 |
+| 4825661 | 7 mV | 9 mV | +2 |
+| 4769289 | 7 mV | 11 mV | +4 |
+| 4769294 | 11 mV | 11 mV | 0 |
+| 5133836 | 11 mV | 11 mV | 0 |
+| 6278308 | 22 mV | 22 mV | 0 |
+| 5950263 | **67 mV** | **67 mV** | **0** |
+
+Every movement is inside the ±5 mV read noise established on the reference pack, which
+confirms that figure independently and across 24 days rather than across seconds. And
+**5950263 did not drift at all** — its 67 mV is a stable, real measurement, not a noisy
+one, and idle time alone neither widened nor healed it.
+
+That still does not say whether it is repairable. The balancing test has not been run: its
+charge count is unchanged at 8, so it has not been charged since the first scan. **Charge
+it fully two or three times, then re-scan.** Until then it stays undecided.
+
+### One pack gained a dumb charge between sessions
+
+4825661 read `88, 8, (96)` in September and `88, 9, (97)` today. Redlink unchanged, cycles
+identical to the decimal — so it was never genuinely charged or used, and only the dumb
+counter moved. The single known mechanism is TX resting high with a pack attached, which
+is what happens when the stock single-shot path exits with the battery still connected.
+5133836 was captured in the same September session and did not move, which fits the
+0.48 s threshold making it timing-dependent rather than certain.
+
+Not provable to the second, but the contrast is the useful part: **eight holder-driven
+captures across two sessions, zero increments.** The holder is not a nicety.
 
 ### Consequences for the GUI
 
