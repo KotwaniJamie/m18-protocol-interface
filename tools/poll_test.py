@@ -54,13 +54,19 @@ def main():
     args = ap.parse_args()
 
     io = runner.Terminal()
+    runner.install_signal_handlers()
     from m18 import M18
     m = M18(args.port)
     m.idle()
     result = None
     try:
-        io.say("Port open, line held LOW. Plug in the test battery.")
-        while not runner.probe(m):
+        io.say(f"Port open, line held LOW. Plug in the test battery. "
+               f"(probe timeout {runner.PROBE_TIMEOUT}s)")
+        waited = 0
+        while runner.probe_latency(m) is None:
+            waited += 1
+            if waited % 10 == 0:
+                io.say(f"  no answer after {waited} knocks")
             time.sleep(0.5)
         io.say("Battery detected.")
 
@@ -70,10 +76,12 @@ def main():
         io.say(f"Probing {args.probes} times, {args.gap}s apart (about {est/60:.1f} min). "
                "Leave the battery connected.")
 
-        hits, misses_in_row, worst_run = 0, 0, 0
+        hits, misses_in_row, worst_run, lat = 0, 0, 0, []
         t0 = time.time()
         for i in range(1, args.probes + 1):
-            if runner.probe(m):
+            l = runner.probe_latency(m)
+            if l is not None:
+                lat.append(l)
                 hits += 1
                 misses_in_row = 0
             else:
@@ -93,6 +101,9 @@ def main():
             "probe_timeout_s": runner.PROBE_TIMEOUT,
             "seconds": round(time.time() - t0, 1),
             "seen": hits, "longest_miss_run": worst_run,
+            "reply_latency_ms": ({"min": round(min(lat) * 1000, 1),
+                                  "median": round(sorted(lat)[len(lat) // 2] * 1000, 1),
+                                  "max": round(max(lat) * 1000, 1)} if lat else None),
             "before": before, "after": after, "moved": moved,
             "verdict": "PASS" if not moved else "FAIL",
         }
@@ -101,6 +112,9 @@ def main():
             io.say(f"FAIL -- counters moved: {moved}. Keep Enter-to-confirm removal.")
         else:
             io.say(f"PASS -- {args.probes} probes, no counter moved.")
+        if lat:
+            io.say(f"Reply latency: {result['reply_latency_ms']} ms "
+                   f"(timeout {runner.PROBE_TIMEOUT * 1000:.0f} ms)")
         io.say(f"Detection: saw the battery on {hits}/{args.probes} probes; "
                f"longest run of misses {worst_run}"
                + (" -- auto-remove would have falsely declared it removed."

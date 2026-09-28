@@ -42,29 +42,35 @@ DATA = HERE.parent / "data"
 
 # --- detecting a battery ---------------------------------------------------
 
-# How long to wait for the sync reply. The reply is one byte at 4800 baud,
-# about 2 ms. Upstream reset() waits the port's 0.8 s timeout instead, and the
-# line sits HIGH for that whole wait -- harmless with nothing attached, but a
-# battery plugged in during that window sees 0.3 + 0.8 = 1.1 s of high, past
-# the 0.48 s dumb-charge threshold. Capped here, the worst case is ~0.35 s.
-PROBE_TIMEOUT = 0.05
+# How long to wait for the sync reply. Upstream reset() waits the port's full
+# 0.8 s timeout, and the line sits HIGH for that whole wait -- harmless with
+# nothing attached, but a battery plugged in during that window sees
+# 0.3 + 0.8 = 1.1 s of high, past the 0.48 s dumb-charge threshold. Capped
+# here, the worst case is 0.3 + 0.15 = 0.45 s.
+#
+# 0.05 s was tried first and never saw a real pack (2026-09-28): the reply is
+# one byte, ~2 ms on the wire, but the pack and the FTDI latency timer take
+# longer than that. tools/poll_test.py records the real reply latency.
+PROBE_TIMEOUT = 0.15
 POLL_INTERVAL = 1.0
 REMOVAL_MISSES = 2          # consecutive silent probes before a pack counts as removed
 
 _sleep = time.sleep         # patched by tests
+_now = time.monotonic       # patched by tests
 
 
-def probe(m, timeout=PROBE_TIMEOUT):
-    """Is a battery with diagnostics attached? One knock, line left LOW.
+def probe_latency(m, timeout=PROBE_TIMEOUT):
+    """One knock. Seconds until the pack answered, or None. Line left LOW.
 
-    The same handshake as M18.reset(), with a short reply timeout and an
-    unconditional idle() afterwards, so the line is never left high whether
-    the pack answered, stayed silent, or something raised.
+    The same handshake as M18.reset(), but it waits for the reply by watching
+    in_waiting against a deadline rather than changing port.timeout -- that
+    would make pyserial re-run tcsetattr on every knock, an unknown sitting
+    right next to the break-condition line. idle() runs unconditionally, so
+    the line is never left high whether the pack answered, stayed silent, or
+    something raised.
     """
     port = m.port
-    old_timeout = port.timeout
     try:
-        port.timeout = timeout
         m.ACC = 4
         port.break_condition = True
         port.dtr = True
@@ -73,13 +79,39 @@ def probe(m, timeout=PROBE_TIMEOUT):
         port.dtr = False
         _sleep(0.3)
         m.send(bytes([m.SYNC_BYTE]))
+        sent = _now()
+        while not port.in_waiting:
+            if _now() - sent >= timeout:
+                return None
+            _sleep(0.002)
+        latency = _now() - sent
         b = port.read(1)
-        return bool(b) and m.reverse_bits(b[0]) == m.SYNC_BYTE
+        return latency if b and m.reverse_bits(b[0]) == m.SYNC_BYTE else None
+    except Exception:
+        return None
+    finally:
+        m.idle()
+
+
+def probe(m, timeout=PROBE_TIMEOUT):
+    """Is a battery with diagnostics attached?"""
+    return probe_latency(m, timeout) is not None
+
+
+def present_slow(m):
+    """The stock handshake with its full 0.8 s wait, line forced LOW after.
+
+    Only for the moment before closing the port: the long wait is what makes
+    it unsafe for insertion polling, and is harmless here, where the question
+    is whether a pack that is *already* attached answers at all. It does not
+    depend on PROBE_TIMEOUT being right.
+    """
+    try:
+        return bool(m.reset())
     except Exception:
         return False
     finally:
         m.idle()
-        port.timeout = old_timeout
 
 
 # --- the case sticker ------------------------------------------------------
@@ -486,7 +518,7 @@ def close_safely(m, io):
     can_ask = True
     while True:
         try:
-            if not probe(m) and not probe(m):
+            if not probe(m) and not present_slow(m):
                 break
             io.say("\nA battery is still attached. Closing now would add a dumb "
                    "charge to it, permanently.")
@@ -512,6 +544,23 @@ def close_safely(m, io):
         pass
 
 
+def install_signal_handlers():
+    """Make every polite way of stopping go through close_safely().
+
+    A process started in the background from a non-interactive shell inherits
+    SIGINT as *ignored* -- found 2026-09-28 when poll_test.py shrugged off a
+    Ctrl+C. And SIGTERM kills Python outright, skipping every finally. Both
+    become KeyboardInterrupt here.
+    """
+    import signal
+
+    def interrupt(signum, frame):
+        raise KeyboardInterrupt
+
+    signal.signal(signal.SIGINT, interrupt)
+    signal.signal(signal.SIGTERM, interrupt)
+
+
 def main():
     ap = argparse.ArgumentParser(description="Phase 3 batch runner")
     ap.add_argument("--port", default=DEFAULT_PORT)
@@ -520,6 +569,7 @@ def main():
                          "(only once the repeated-probe test has passed)")
     args = ap.parse_args()
 
+    install_signal_handlers()
     from m18 import M18
     m = M18(args.port)       # __init__ asserts idle()
     m.idle()

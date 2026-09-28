@@ -296,7 +296,7 @@ tool for one-off experiments.
 
 | Step | State |
 | --- | --- |
-| 1. Runner + hardware-free tests | ✅ done — 81 tests pass; smoke-run against the real adapter with no pack attached |
+| 1. Runner + hardware-free tests | ✅ done — 84 tests pass; smoke-run against the real adapter with no pack attached |
 | 2. Repeated-probe test on pack 2 (`tools/poll_test.py`) | ⏳ **next — needs pack 2 attached** |
 | 3. Enable `--auto-remove` if step 2 passes | blocked on 2 |
 | First real batch run | after 2 |
@@ -320,6 +320,24 @@ if the timeout is put back to 0.8 s (checked by mutation).
 Why eight full dumps never cost a charge, found while building this: the 13 "absent"
 registers are **not silence** on hardware. They come back as an instant `82 04` refusal
 frame, so the line never sits high waiting on them.
+
+**First hardware attempt failed (2026-09-28), and it was the timeout.** At 0.05 s the
+probe never once saw pack 2 — the pack plus the FTDI latency timer take longer than the
+~2 ms the byte spends on the wire. Now 0.15 s (worst case 0.45 s high), and the wait
+watches `in_waiting` against a deadline instead of setting `port.timeout`, which made
+pyserial re-run `tcsetattr` on every knock. `poll_test.py` records real reply latency.
+
+Two safety gaps that attempt exposed, both fixed:
+
+- `close_safely()` relied on the same probe, so it was blind to the pack too and would
+  have closed on it. It now confirms absence with the stock `reset()` handshake — the long
+  wait is harmless at that moment — so it no longer depends on `PROBE_TIMEOUT` being right.
+- The test was started in the background, which makes SIGINT *ignored*; Ctrl+C did
+  nothing. SIGTERM skips every `finally`. Both now raise `KeyboardInterrupt` and go
+  through `close_safely()`. It was stopped by SIGTERM only after the pack was unplugged.
+
+Pack 2 took about 30 s of 0.35 s-high knocks during that attempt; its first counter read
+on the retry says whether that cost anything (September baseline `19, 2, (21)`).
 
 ### Operator entry — the sticker
 

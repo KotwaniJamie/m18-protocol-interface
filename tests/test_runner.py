@@ -81,6 +81,10 @@ class ProbePort:
     def reset_input_buffer(self):
         self.pending = b""
 
+    @property
+    def in_waiting(self):
+        return len(self.pending)
+
     def write(self, data):
         sync = bytes([m18mod.M18.reverse_bits(None, 0xAA)])
         if data == sync and self.pack.attached and self.pack.answers_sync:
@@ -116,6 +120,17 @@ class SessionPack(FakePack):
         self.answers_sync = True
         self.fail_after = fail_after          # unplugged mid-read after this many register reads
         self.ACC = 4
+
+    def reset(self):
+        """Stock handshake: high 0.3 s, then waits the full timeout if silent."""
+        self.port.break_condition = True
+        self.clock.sleep(0.3)
+        self.port.break_condition = False
+        self.clock.sleep(0.3)
+        if self.attached and self.answers_sync:
+            return True
+        self.clock.sleep(0.8)
+        return False
 
     def cmd(self, a, b, c, length, command=0x01):
         if self.fail_after is not None and len(self.reads) >= self.fail_after:
@@ -220,11 +235,12 @@ class RunnerCase(unittest.TestCase):
         self.runs = pathlib.Path(self.tmp.name) / "runs"
         self.out.mkdir()
         self.clock = Clock()
-        self._sleep = runner._sleep
+        self._sleep, self._now = runner._sleep, runner._now
         runner._sleep = self.clock.sleep
+        runner._now = lambda: self.clock.t
 
     def tearDown(self):
-        runner._sleep = self._sleep
+        runner._sleep, runner._now = self._sleep, self._now
         self.tmp.cleanup()
 
     def session(self, pack, io, **kw):
@@ -254,7 +270,6 @@ class TestProbe(RunnerCase):
         pack.port.read_raises = True
         self.assertFalse(runner.probe(pack))
         self.assertTrue(pack.port.break_condition)
-        self.assertEqual(pack.port.timeout, 0.8)
 
     def test_high_time_stays_under_the_dumb_charge_threshold(self):
         """The safety property of the whole probe.
@@ -269,6 +284,36 @@ class TestProbe(RunnerCase):
             self.assertEqual(len(pack.port.high_spans), 1)
             self.assertLess(pack.port.high_spans[0], 0.48,
                             f"attached={attached}: high for {pack.port.high_spans[0]:.2f}s")
+
+    def test_reports_latency(self):
+        pack = make_pack(self.clock)
+        self.assertIsNotNone(runner.probe_latency(pack))
+        pack.attached = False
+        self.assertIsNone(runner.probe_latency(pack))
+
+    def test_does_not_touch_port_settings(self):
+        """Changing port.timeout re-runs tcsetattr; the probe must not."""
+        pack = make_pack(self.clock)
+        pack.port.timeout = 0.8
+        runner.probe(pack)
+        pack.attached = False
+        runner.probe(pack)
+        self.assertEqual(pack.port.timeout, 0.8)
+
+    def test_slow_pack_missed_by_probe_is_still_caught_at_close(self):
+        """If PROBE_TIMEOUT is ever too short for a real pack -- as 0.05 s was --
+        close_safely must still refuse, via the stock handshake."""
+        pack = make_pack(self.clock)
+        pack.answers_sync = True
+        real = runner.probe
+        runner.probe = lambda m, **k: False          # probe blind to this pack
+        try:
+            io = ScriptIO(ask_script=[unplug(pack)])
+            runner.close_safely(pack, io)
+        finally:
+            runner.probe = real
+        self.assertIn("still attached", io.text)
+        self.assertFalse(pack.port.closed_with_pack_attached)
 
     def test_upstream_reset_would_not_be_safe_here(self):
         """Documents why probe() exists rather than calling M18.reset()."""
