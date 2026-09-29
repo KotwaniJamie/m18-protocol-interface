@@ -1,0 +1,7 @@
+# Scan output: one JSON per battery, run logs. Local to whoever scans.
+/data
+# tools/holder.py runtime files
+.holder/
+__pycache__/
+.venv/
+.DS_Store
