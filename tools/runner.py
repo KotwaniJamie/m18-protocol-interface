@@ -187,10 +187,15 @@ SERIAL_ID = HEALTH_REGISTERS["serial_raw"]
 # data is gone. Fewer than this is odd enough to flag but not to write off.
 DEAD_MIN_SENTINELS = 5
 
-# Provisional -- in testing, below ~22 mV imbalance carried no information, and
-# real cutoffs wait for the full pile. This is a "look at me", not a verdict.
-IMBALANCE_FLAG_MV = 30
-LOW_CHARGE_COUNT = 20
+# Cell imbalance (delta V: highest cell minus lowest). M18 packs do not balance
+# their cells -- the hardware is there but never enabled, except on Forge -- so
+# charging stops when the highest cell reaches 4.2 V and the tool cuts out when
+# the lowest reaches ~2.5 V. The gap between them is capacity the pack cannot
+# use, and it does not heal on its own. Above 10 mV, balancing by hand is
+# worth it (advice from someone who repairs these packs). Readings vary about
+# +/-5 mV, so just over 10 is phrased as "re-scan to confirm".
+IMBALANCE_OK_MV = 10
+IMBALANCE_BALANCE_MV = 20
 
 
 def classify(doc):
@@ -233,13 +238,15 @@ def classify(doc):
         if r["state"] == dump.UNDECODABLE and r["id"] in HEALTH_IDS:
             reasons.append(f"could not decode {r['label'].strip()}")
 
-    imbal, charges = val("cell_imbalance_mv"), val("charge_count_total")
-    if isinstance(imbal, (int, float)) and imbal > IMBALANCE_FLAG_MV:
-        msg = f"cells {imbal} mV apart"
-        if isinstance(charges, int) and charges < LOW_CHARGE_COUNT:
-            msg += (f" on only {charges} charges -- may just need balancing; "
-                    "charge fully 2-3 times and re-scan before judging")
-        reasons.append(msg)
+    imbal = val("cell_imbalance_mv")
+    if isinstance(imbal, (int, float)) and imbal > IMBALANCE_BALANCE_MV:
+        reasons.append(f"cell imbalance (delta V) {imbal} mV -- balance the cells by hand, "
+                       "then re-scan after a few charges; if the gap comes back, "
+                       "a cell is weak and needs replacing")
+    elif isinstance(imbal, (int, float)) and imbal > IMBALANCE_OK_MV:
+        reasons.append(f"cell imbalance (delta V) {imbal} mV -- slightly out of balance; "
+                       "balance by hand for full capacity (readings vary +/-5 mV, "
+                       "so re-scan to confirm)")
 
     if (h.get("battery_description") or {}).get("valid") is False:
         reasons.append(f"unknown battery type {val('battery_type')} -- cycles cannot be worked out")

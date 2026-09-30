@@ -154,7 +154,7 @@ def healthy_payloads(mfg=(2018, 8, 28), eserial=1000001, btype=38, cells=None):
         2: btype.to_bytes(2, "big") + eserial.to_bytes(3, "big"),
         4: epoch(*mfg),
         8: epoch(2026, 9, 28),
-        12: cells or b"\x0e\x42\x0e\x40\x0e\x47\x0e\x39\x0e\x44",
+        12: cells or b"\x0e\x42\x0e\x40\x0e\x44\x0e\x3e\x0e\x43",   # 6 mV apart
         13: b"\x02\x00",
         31: (87).to_bytes(4, "big"), 32: (5).to_bytes(2, "big"), 33: (82).to_bytes(2, "big"),
         # Forge-only registers refuse on a non-Forge pack, as on hardware.
@@ -417,6 +417,43 @@ class TestClassifySynthetic(unittest.TestCase):
 
     def test_healthy_fake_is_ok(self):
         self.assertEqual(runner.classify(self.doc(make_pack()))["result"], runner.OK)
+
+
+def cells(*mv):
+    return b"".join(v.to_bytes(2, "big") for v in mv)
+
+
+class TestImbalance(unittest.TestCase):
+    """Tiers from 2026-09-30: M18 packs never rebalance, so >10 mV is worth fixing."""
+
+    def verdict(self, mv):
+        p = make_pack(cells=cells(*mv))
+        return runner.classify(dump.build_document(p, dump.dump_registers(p)))
+
+    def test_within_10_mv_is_ok(self):
+        self.assertEqual(self.verdict((3650, 3648, 3652, 3646, 3651))["result"], runner.OK)
+
+    def test_exactly_10_is_ok(self):
+        self.assertEqual(self.verdict((3650, 3640, 3645, 3645, 3645))["result"], runner.OK)
+
+    def test_slightly_out(self):
+        v = self.verdict((3650, 3635, 3645, 3645, 3645))          # 15 mV
+        self.assertEqual(v["result"], runner.FLAGGED)
+        self.assertIn("slightly out of balance", v["reasons"][0])
+        self.assertIn("re-scan to confirm", v["reasons"][0])
+
+    def test_needs_balancing(self):
+        v = self.verdict((3950, 3955, 4017, 3997, 3988))          # 67 mV
+        self.assertEqual(v["result"], runner.FLAGGED)
+        self.assertIn("balance the cells by hand", v["reasons"][0])
+        self.assertIn("weak", v["reasons"][0])
+
+    def test_never_says_charging_will_fix_it(self):
+        """The old advice assumed the pack balances while charging. It does not."""
+        for mv in ((3650, 3635, 3645, 3645, 3645), (3950, 3955, 4017, 3997, 3988)):
+            text = " ".join(self.verdict(mv)["reasons"])
+            self.assertNotIn("charge fully", text)
+            self.assertNotIn("before judging", text)
 
 
 class TestGiveUp(unittest.TestCase):
