@@ -19,8 +19,11 @@ let shownKey = null;      // what the main area is currently drawn for
 let showAll = false;      // "Show all readings" open
 let noLogoHelp = false;   // "nothing's happening?" screen open
 let hiddenChips = new Set();
-let stickerTimer = null;
-let nameTimer = null;
+// The sticker and the worn-off name are saved explicitly (Save button or
+// Enter). Until then the typed text is a draft, kept here so it survives the
+// screen being redrawn -- e.g. when the read finishes while you're typing.
+let stickerDraft = null, editingSticker = false;
+let nameDraft = null, editingName = false;
 
 const PILL = {
   no_adapter:      ["NO ADAPTER CONNECTED", "warn"],
@@ -44,6 +47,10 @@ async function tick() {
         s.opened = null;
       }
       if (s.phase !== "waiting") noLogoHelp = false;
+      if (s.phase === "reading" && (!last || last.phase !== "reading")) {
+        stickerDraft = nameDraft = null;           // a new battery starts clean
+        editingSticker = editingName = false;
+      }
       last = s;
       render(s);
     }
@@ -72,7 +79,7 @@ function render(s) {
   const key = JSON.stringify([s.opened && s.opened.file, s.phase, noLogoHelp, showAll, [...hiddenChips],
     s.phase === "confirm_adapter" ? s.adapter && s.adapter.device : null,
     view && [view.identity.serial, view.verdict.title], s.removed, s.saved && s.saved.file,
-    !!(s.sticker && s.sticker.text === "UNREADABLE")]);
+    s.sticker && s.sticker.text, s.sticker && s.sticker.name, editingSticker, editingName]);
   if (key !== shownKey) {
     shownKey = key;
     $("#main").innerHTML = s.opened ? resultScreen(s.opened.view, s, s.opened.file) : screenFor(s, view);
@@ -250,27 +257,49 @@ function reading(s) {
 }
 
 function stickerField(st, label) {
+  const worn = st && st.text === "UNREADABLE";
+  const saved = st && st.text && !worn;
+
   // Worn off: the sticker is recorded as unreadable, and the user gives the
   // pack a name of their own instead. The name is stored apart from the
   // sticker, so it is never mistaken for a printed serial.
-  if (st && st.text === "UNREADABLE") {
+  if (worn) {
+    if (st.name && !editingName) {
+      return `<div class="sticker">
+        <span class="lbl">Sticker: worn off</span>
+        <div class="saved-row"><span>Name: <b>${esc(st.name)}</b></span>
+          <button type="button" class="btn" id="change-name">Change name</button></div>
+      </div>`;
+    }
     return `<div class="sticker">
       <span class="lbl">Sticker: worn off</span>
       <label for="pack-name">Name it something you'll recognise:</label>
       <div class="row"><input id="pack-name" class="free" autocomplete="off" maxlength="60"
-        placeholder="e.g. Garage pack 3, blue tape" value="${esc(st.name || "")}"></div>
+        placeholder="e.g. Garage pack 3, blue tape" value="${esc(nameDraft ?? st.name ?? "")}">
+        <button type="button" class="btn solid" id="save-name">Save name</button></div>
+      <div class="msg" id="sticker-status"></div>
       <button type="button" class="hint" id="sticker-back">Type the sticker after all</button>
+    </div>`;
+  }
+
+  if (saved && !editingSticker) {
+    return `<div class="sticker">
+      <span class="lbl">${esc(label)}</span>
+      <div class="saved-row"><span class="saved-val">${esc(st.text)}</span>
+        <button type="button" class="btn" id="change-sticker">Change sticker</button></div>
       <div class="msg" id="sticker-status"></div>
     </div>`;
   }
-  const value = st && st.text ? st.text : "";
+
   return `<div class="sticker">
     <label for="sticker">${esc(label)}</label>
     <div class="row">
-      <input id="sticker" autocomplete="off" spellcheck="false" placeholder="ABCD1234 180720 7654323" value="${esc(value)}">
-      <button type="button" class="btn" id="worn-off">Sticker worn off</button>
+      <input id="sticker" autocomplete="off" spellcheck="false" placeholder="ABCD1234 180720 7654323"
+        value="${esc(stickerDraft ?? (saved ? st.text : ""))}">
+      <button type="button" class="btn solid" id="save-sticker">Save sticker</button>
     </div>
     <div class="msg" id="sticker-status"></div>
+    <button type="button" class="hint" id="worn-off">Sticker worn off?</button>
   </div>`;
 }
 
@@ -278,11 +307,16 @@ function stickerStatus(st) {
   const el = $("#sticker-status");
   if (!el) return;
   let msg = "", warn = false;
-  if (st && st.text === "UNREADABLE") msg = st.name ? "Saved." : "";
-  else if (st && st.date_ok === false) { msg = `Check the sticker: ${st.date_message}. Is it the right battery?`; warn = true; }
-  else if (st && st.problem) { msg = `Saved as typed. Unusual format: ${st.problem}.`; warn = true; }
-  else if (st && st.date_ok) msg = "Sticker matches the battery's build date.";
-  else if (st && st.text) msg = "Saved.";
+  if ($("#sticker")) {                       // typing a sticker
+    if (stickerDraft !== null && stickerDraft.trim()) msg = "Not saved yet. Press Save sticker or Enter.";
+  } else if ($("#pack-name")) {              // typing a name
+    if (nameDraft !== null && nameDraft.trim()) msg = "Not saved yet. Press Save name or Enter.";
+  } else if (st && st.text && st.text !== "UNREADABLE") {
+    if (st.date_ok === false) { msg = `Check the sticker: ${st.date_message}. Is it the right battery?`; warn = true; }
+    else if (st.problem) { msg = `Saved as typed. Unusual format: ${st.problem}.`; warn = true; }
+    else if (st.date_ok) msg = "Saved. Matches the battery's build date.";
+    else msg = "Saved.";
+  }
   el.innerHTML = warn ? `<div class="advice look"><b>!</b><span>${esc(msg)}</span></div>` : esc(msg);
 }
 
@@ -395,21 +429,34 @@ function wire(s) {
   });
   const input = $("#sticker");
   if (input) {
-    const send = async () => {
-      const info = await api.set_sticker(input.value);
-      if (document.activeElement !== input && info.text && info.text !== "UNREADABLE") input.value = info.text;
+    const save = async () => {
+      const text = input.value.trim();
+      if (!text) { input.focus(); return; }
+      const info = await api.set_sticker(text);
+      stickerDraft = null; editingSticker = false;
+      if (info) last = { ...last, sticker: info };   // show it saved now, not on the next poll
+      redraw();
     };
-    input.oninput = () => { clearTimeout(stickerTimer); stickerTimer = setTimeout(send, 500); };
-    input.onblur = send;
-    input.onkeydown = (e) => { if (e.key === "Enter") input.blur(); };
-    on("worn-off", async () => { clearTimeout(stickerTimer); await api.set_sticker("?"); });
+    input.oninput = () => { stickerDraft = input.value; stickerStatus(last && last.sticker); };
+    input.onkeydown = (e) => { if (e.key === "Enter") save(); };
+    on("save-sticker", save);
+    on("worn-off", async () => { stickerDraft = null; editingSticker = false; await api.set_sticker("?"); });
   }
+  on("change-sticker", () => { editingSticker = true; redraw(); const i = $("#sticker"); if (i) i.select(); });
+
   const nameInput = $("#pack-name");
   if (nameInput) {
-    const sendName = () => api.set_name(nameInput.value);
-    nameInput.oninput = () => { clearTimeout(nameTimer); nameTimer = setTimeout(sendName, 500); };
-    nameInput.onblur = sendName;
-    nameInput.onkeydown = (e) => { if (e.key === "Enter") nameInput.blur(); };
-    on("sticker-back", async () => { clearTimeout(nameTimer); await api.set_name(""); await api.set_sticker(""); });
+    const saveName = async () => {
+      if (!nameInput.value.trim()) { nameInput.focus(); return; }
+      const info = await api.set_name(nameInput.value);
+      nameDraft = null; editingName = false;
+      if (info) last = { ...last, sticker: info };
+      redraw();
+    };
+    nameInput.oninput = () => { nameDraft = nameInput.value; stickerStatus(last && last.sticker); };
+    nameInput.onkeydown = (e) => { if (e.key === "Enter") saveName(); };
+    on("save-name", saveName);
+    on("sticker-back", async () => { nameDraft = null; editingName = false; await api.set_name(""); await api.set_sticker(""); });
   }
+  on("change-name", () => { editingName = true; redraw(); const i = $("#pack-name"); if (i) i.select(); });
 }

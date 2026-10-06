@@ -136,6 +136,10 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--caution); o
 .sticker input { flex: 1; min-width: 0; font: 600 15px var(--f-data); background: #fff; color: var(--black); border: 0; border-radius: 5px;
   padding: 9px 11px; text-transform: uppercase; letter-spacing: .02em; }
 .sticker .msg { font-size: 13px; min-height: 1.4em; }
+.sticker .saved-row { display: flex; align-items: center; justify-content: space-between; gap: 8px 12px; flex-wrap: wrap;
+  background: var(--red-panel); border-radius: 6px; padding: 8px 8px 8px 12px; }
+.sticker .saved-val { font: 600 17px var(--f-data); letter-spacing: .02em; }
+.sticker .btn { padding: 7px 12px; }
 .sticker input.free { text-transform: none; font-family: var(--f-body); font-weight: 600; letter-spacing: 0; }
 .sticker .hint { font-size: 13px; }
 
