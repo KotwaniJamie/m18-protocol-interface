@@ -71,10 +71,10 @@ class TestVerdict(Timing):
         self.check(cells_mv(3900, 3902, 3898, 3901, 3900), runner.OK, model.GOOD, "Good")
 
     def test_slightly_out(self):
-        self.check(cells_mv(3900, 3915, 3900, 3900, 3900), runner.FLAGGED, model.LOOK, "Slightly")
+        self.check(cells_mv(3900, 3915, 3900, 3900, 3900), runner.FLAGGED, model.LOOK, "Worth balancing")
 
     def test_out_of_balance(self):
-        self.check(cells_mv(3900, 3967, 3900, 3900, 3900), runner.FLAGGED, model.LOOK, "out of balance")
+        self.check(cells_mv(3900, 3967, 3900, 3900, 3900), runner.FLAGGED, model.LOOK, "Needs balancing")
 
     def test_imbalance_is_called_by_its_name(self):
         doc = capture(make_pack(self.clock, cells=cells_mv(3900, 3967, 3900, 3900, 3900)))
@@ -93,6 +93,31 @@ class TestVerdict(Timing):
             self.assertFalse(s["valid"], s["label"])
             self.assertIsNone(s["value"], s["label"])
         self.assertNotIn("65535", json.dumps(v["numbers"] + v["wear"] + v["details"]))
+
+
+class TestMockupWording(Timing):
+    """Chip text and the six tiles follow the chosen mockup."""
+
+    def test_status_chips(self):
+        cases = [((3900, 3902, 3898, 3901, 3900), "✓ Good"),
+                 ((3900, 3915, 3900, 3900, 3900), "! Needs a look"),
+                 ((3900, 3967, 3900, 3900, 3900), "! Needs balancing")]
+        for mv, chip in cases:
+            v = model.verdict(capture(make_pack(self.clock, cells=cells_mv(*mv))))
+            self.assertEqual(v["status"], chip)
+
+    def test_six_tiles_in_order(self):
+        v = model.view(capture(make_pack(self.clock)))
+        self.assertEqual([t["label"] for t in v["tiles"]],
+                         ["Full cycles", "Charges", "Temp °C", "Overheated", "Ran flat", "Built"])
+
+    def test_tiles_never_show_a_sentinel(self):
+        pack = make_pack(self.clock)
+        for i in list(runner.HEALTH_IDS):
+            if i != runner.SERIAL_ID and m18mod.data_id[i][1] in (2, 4):
+                pack.payloads[i] = b"\xff" * m18mod.data_id[i][1]
+        v = model.view(capture(pack))
+        self.assertNotIn("65535", json.dumps(v["tiles"]))
 
 
 class TestCells(Timing):

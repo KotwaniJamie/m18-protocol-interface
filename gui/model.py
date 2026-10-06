@@ -109,7 +109,7 @@ def verdict(doc):
     others = [r for r in c["reasons"] if not r.startswith("cell imbalance")]
 
     if result == runner.DROPPED:
-        return {"state": LOOK, "result": result, "title": "Couldn't finish reading",
+        return {"state": LOOK, "result": result, "status": "! Reseat it", "title": "Couldn't finish reading",
                 "summary": "The battery stopped answering partway through. "
                            "Nothing was saved.",
                 "action": "Reseat the battery and it will be read again.",
@@ -117,22 +117,26 @@ def verdict(doc):
     if result == runner.DEAD:
         blank = sum(1 for r in doc.get("registers") or []
                     if r["id"] in HEALTH_IDS and r["state"] == dump.SENTINEL)
-        return {"state": DEAD, "result": result, "title": "Records unusable",
+        return {"state": DEAD, "result": result, "status": "× Unusable", "title": "Records unusable",
                 "summary": f"The battery talks, but {blank} of the {len(HEALTH_IDS)} "
                            "records PackCheck judges it by are blank. Its history "
                            "can't be trusted.",
                 "action": "Set it aside. Don't judge it by anything below.",
                 "reasons": []}
 
+    # Titles and chip text follow the chosen mockup (design/packcheck-mockup.html
+    # in the private notes repo): one short verdict, one chip.
     reasons = []
+    status = "! Needs a look"
     if level == "balance":
-        title = "Cells out of balance"
+        title = "Needs balancing"
+        status = "! Needs balancing"
         summary = (f"Cell imbalance (ΔV) is {imbal} mV. M18 packs don't balance "
                    "their own cells, so this gap is capacity the pack can't use.")
         action = ("Balance the cells by hand, then re-scan after a few charges. "
                   "If the gap comes back, a cell is weak and needs replacing.")
     elif level == "slight":
-        title = "Slightly out of balance"
+        title = "Worth balancing"
         summary = (f"Cell imbalance (ΔV) is {imbal} mV, just over the 10 mV line. "
                    "Readings vary by about ±5 mV.")
         action = "Re-scan to confirm. Balancing by hand gets back full capacity."
@@ -142,13 +146,14 @@ def verdict(doc):
         action = "See the notes below."
     else:
         title = "Good to use"
+        status = "✓ Good"
         summary = (f"Cells are balanced to within {imbal} mV, and nothing in its "
                    "records stands out." if isinstance(imbal, (int, float))
                    else "Nothing in its records stands out.")
         action = None
     reasons.extend(r.replace(" -- ", " — ") for r in others)
     return {"state": GOOD if result == runner.OK else LOOK, "result": result,
-            "title": title, "summary": summary, "action": action,
+            "status": status, "title": title, "summary": summary, "action": action,
             "reasons": reasons}
 
 
@@ -247,6 +252,26 @@ def _days_ago(d):
     if d == 1:
         return "yesterday"
     return f"{d:,} days ago"
+
+
+def tiles(doc):
+    """The six numbers under the verdict, in the mockup's order and units."""
+    h = doc.get("health") or {}
+    cyc, cyc_ok = _field(h, "total_discharge_cycles")
+    tot, tot_ok = _field(h, "charge_count_total")
+    temp, t_ok = _field(h, "temperature_c")
+    hot, hot_ok = _field(h, "times_overheated")
+    flat, flat_ok = _field(h, "discharged_to_empty")
+    built, b_ok = _field(h, "manufacture_date")
+    d = _date(built)
+    return [
+        stat("Full cycles", _num(cyc, 1), cyc_ok),
+        stat("Charges", _num(tot), tot_ok),
+        stat("Temp °C", _num(temp, 1), t_ok),
+        stat("Overheated", _num(hot), hot_ok),
+        stat("Ran flat", _num(flat), flat_ok),
+        stat("Built", d.strftime("%Y-%m-%d") if d else None, b_ok),
+    ]
 
 
 # --- how hard it's been worked -------------------------------------------------
@@ -372,6 +397,7 @@ def view(doc, earlier=()):
         "identity": identity(doc),
         "cells": cells(doc) if readable else None,
         "numbers": key_numbers(doc) if readable else [],
+        "tiles": tiles(doc) if readable else [],
         "wear": wear(doc) if readable else [],
         "details": details(doc) if readable else [],
         "usage": usage(doc) if readable else None,
