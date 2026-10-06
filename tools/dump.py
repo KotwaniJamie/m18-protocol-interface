@@ -180,12 +180,14 @@ GIVE_UP_AFTER = 5
 NOT_ATTEMPTED = "not attempted: connection lost"
 
 
-def dump_registers(m, force_refresh=True, give_up_after=GIVE_UP_AFTER):
+def dump_registers(m, force_refresh=True, give_up_after=GIVE_UP_AFTER, progress=None):
     """Every register in data_id, in order. One pass, one sample.
 
     Stops early after `give_up_after` consecutive silent registers and marks
     the rest ABSENT with error NOT_ATTEMPTED, so a dropped connection is fast
     and obvious rather than slow and ambiguous.
+
+    `progress(done, total)`, if given, is called after each register.
     """
     m.reset()
     if force_refresh:
@@ -203,6 +205,8 @@ def dump_registers(m, force_refresh=True, give_up_after=GIVE_UP_AFTER):
         rec = read_register(m, i)
         silent = silent + 1 if (rec["state"] == ABSENT and "error" in rec) else 0
         recs.append(rec)
+        if progress:
+            progress(i + 1, len(data_id))
     m.idle()
     return recs
 
