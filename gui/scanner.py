@@ -54,6 +54,7 @@ class Scanner(threading.Thread):
         self.close_wanted = False
         self.accepted = set()     # untested adapters the person chose to use
         self.retry_sticker = None
+        self.retry_name = None    # the user's own name for a pack whose sticker is worn off
         self.misses = 0
         self.pack = None          # the battery currently on screen
         self.run_log = None
@@ -97,7 +98,7 @@ class Scanner(threading.Thread):
         text = (text or "").strip()
         if not text:
             sticker, problem = None, None
-        elif text == "?":
+        elif text == "?":   # the sticker is worn off; see set_name()
             sticker, problem = "UNREADABLE", None
         else:
             sticker, problem = runner.parse_sticker(text)
@@ -106,6 +107,8 @@ class Scanner(threading.Thread):
         date_ok, date_msg = None, None
         if pack is not None:
             pack["sticker"] = sticker
+            if sticker and sticker != "UNREADABLE" and pack.get("name"):
+                self.set_name("")   # a real sticker makes the made-up name redundant
             doc = pack.get("doc")
             if doc is not None and pack.get("path"):
                 doc["case_serial"] = sticker or ""
@@ -116,12 +119,35 @@ class Scanner(threading.Thread):
                 if date_ok is None:
                     date_msg = None
         info = {"text": sticker, "problem": problem, "date_ok": date_ok,
-                "date_message": date_msg}
+                "date_message": date_msg, "name": (pack or {}).get("name")}
         view = self.state.get("view")
         if view is not None:
             view = {**view, "identity": {**view["identity"], "sticker": sticker}}
         self._set(sticker=info, view=view)
         return info
+
+    def set_name(self, text):
+        """The user's own name for a pack whose case sticker is worn off.
+
+        Kept apart from the sticker (which stays "UNREADABLE") so a made-up
+        name is never mistaken for a printed serial or date-checked.
+        """
+        name = " ".join((text or "").split())[:60] or None
+        with self.lock:
+            pack = self.pack
+        if pack is not None:
+            pack["name"] = name
+            doc = pack.get("doc")
+            if doc is not None:
+                doc["custom_name"] = name
+                if pack.get("path"):
+                    pack["path"].write_text(json.dumps(doc, indent=2, default=str))
+        sticker = {**(self.state.get("sticker") or {}), "name": name}
+        view = self.state.get("view")
+        if view is not None:
+            view = {**view, "identity": {**view["identity"], "name": name}}
+        self._set(sticker=sticker, view=view)
+        return sticker
 
     # -- the loop -----------------------------------------------------------
     def run(self):
@@ -198,12 +224,12 @@ class Scanner(threading.Thread):
     # -- one battery ----------------------------------------------------------
     def _read(self):
         self._finish_pack()
-        sticker = self.retry_sticker
-        self.pack = {"sticker": sticker, "doc": None, "path": None, "logged": False}
+        sticker, name = self.retry_sticker, self.retry_name
+        self.pack = {"sticker": sticker, "name": name, "doc": None, "path": None, "logged": False}
         self.misses = 0
         self._set(phase=READING, progress=0, view=None, removed=False, saved=None,
                   sticker={"text": sticker, "problem": None, "date_ok": None,
-                           "date_message": None})
+                           "date_message": None, "name": name})
 
         def progress(done, total):
             self._set(progress=round(100 * done / total))
@@ -213,6 +239,7 @@ class Scanner(threading.Thread):
             records = dump.dump_registers(self.m, progress=progress)
         except Exception:
             self.retry_sticker = self.pack["sticker"]
+            self.retry_name = self.pack["name"]
             self._log(result=runner.DROPPED, case_serial=self.pack["sticker"],
                       error=traceback.format_exc())
             self.pack["logged"] = True
@@ -231,6 +258,7 @@ class Scanner(threading.Thread):
             # A partial read must never overwrite a good one: not saved, and
             # the sticker is offered again on reseat.
             self.retry_sticker = self.pack["sticker"]
+            self.retry_name = self.pack["name"]
             self._log(result=verdict["result"], reasons=verdict["reasons"],
                       case_serial=self.pack["sticker"], e_serial=doc.get("e_serial"),
                       state_counts=doc["state_counts"])
@@ -238,7 +266,7 @@ class Scanner(threading.Thread):
             self._set(phase=ATTACHED, view=view, progress=100)
             return
 
-        self.retry_sticker = None
+        self.retry_sticker = self.retry_name = None
         doc["runner"] = {"result": verdict["result"], "reasons": verdict["reasons"],
                          "read_seconds": seconds}
         es = doc.get("e_serial")
@@ -249,8 +277,11 @@ class Scanner(threading.Thread):
         self.pack["seconds"] = seconds
         self._set(phase=ATTACHED, view=view, progress=100,
                   saved={"file": self.pack["path"].name, "rescan": bool(earlier)})
-        # Re-check whatever was typed during the read against the build date.
+        # Re-check whatever was typed during the read against the build date,
+        # and write any name given during the read into the saved file.
         self.set_sticker(self.pack["sticker"] or "")
+        if self.pack.get("name"):
+            self.set_name(self.pack["name"])
 
     def _watch_removal(self):
         """One knock per turn; two silent knocks in a row mean it was removed."""
@@ -272,10 +303,10 @@ class Scanner(threading.Thread):
         v = p["verdict"]
         with (self.captures / "index.jsonl").open("a") as f:
             f.write(json.dumps({"captured": doc["captured_at"], "e_serial": doc["e_serial"],
-                                "case_serial": p["sticker"],
+                                "case_serial": p["sticker"], "custom_name": p.get("name"),
                                 "note": f"PackCheck: {v['result']}"}) + "\n")
         self._log(result=v["result"], reasons=v["reasons"], case_serial=p["sticker"],
-                  e_serial=doc.get("e_serial"), file=p["path"].name,
+                  custom_name=p.get("name"), e_serial=doc.get("e_serial"), file=p["path"].name,
                   state_counts=doc["state_counts"], read_seconds=p["seconds"])
 
     def _earlier(self, e_serial):
@@ -319,13 +350,13 @@ class Scanner(threading.Thread):
 
 def _dropped_view():
     return {"verdict": {"state": model.LOOK, "result": runner.DROPPED,
-                        "title": "Couldn't finish reading",
+                        "status": "! Reseat it", "title": "Couldn't finish reading",
                         "summary": "The battery stopped answering partway through. "
                                    "Nothing was saved.",
                         "action": "Reseat the battery and it will be read again.",
                         "reasons": ["the read failed outright"]},
-            "identity": {"sticker": None, "serial": None, "type": None, "model": None,
-                         "captured": None},
+            "identity": {"sticker": None, "name": None, "serial": None, "type": None,
+                         "model": None, "captured": None},
             "cells": None, "numbers": [], "wear": [], "details": [], "usage": None,
             "history": [], "readings": {"rows": [], "counts": [], "total": 0}}
 

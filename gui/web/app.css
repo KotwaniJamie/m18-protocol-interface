@@ -136,6 +136,8 @@ button:focus-visible, input:focus-visible { outline: 3px solid var(--caution); o
 .sticker input { flex: 1; min-width: 0; font: 600 15px var(--f-data); background: #fff; color: var(--black); border: 0; border-radius: 5px;
   padding: 9px 11px; text-transform: uppercase; letter-spacing: .02em; }
 .sticker .msg { font-size: 13px; min-height: 1.4em; }
+.sticker input.free { text-transform: none; font-family: var(--f-body); font-weight: 600; letter-spacing: 0; }
+.sticker .hint { font-size: 13px; }
 
 /* --- buttons ------------------------------------------------------------- */
 .btn { justify-self: start; font: 700 14px var(--f-body); background: transparent; color: #fff; border: 2px solid #fff;

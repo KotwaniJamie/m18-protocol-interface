@@ -289,6 +289,56 @@ class TestScanner(Timing):
         self.assertEqual(list((self.data / "captures").glob("pack_*.json")), [])
         self.assertEqual(sc.retry_sticker, "ABCD1234 180828 7654321")
 
+    def _read_with(self, pack, during):
+        sc = self.make(pack)
+        real = dump.dump_registers
+
+        def typed_during_read(m, **k):
+            during(sc)
+            return real(m, **k)
+
+        dump.dump_registers = typed_during_read
+        try:
+            self.run_until(sc, scanner.ATTACHED)
+        finally:
+            dump.dump_registers = real
+        return sc
+
+    def test_worn_sticker_gets_the_users_own_name(self):
+        """'Sticker worn off', then a name the user will recognise."""
+        sc = self._read_with(make_pack(self.clock),
+                             lambda sc: (sc.set_sticker("?"), sc.set_name("  Garage   pack 3 ")))
+        saved = json.loads(next((self.data / "captures").glob("pack_*_full.json")).read_text())
+        self.assertEqual(saved["case_serial"], "UNREADABLE")     # the sticker itself stays honest
+        self.assertEqual(saved["custom_name"], "Garage pack 3")   # tidied
+        self.assertEqual(sc.state["view"]["identity"]["name"], "Garage pack 3")
+        self.assertIsNone(sc.state["sticker"]["date_ok"])         # a name is never date-checked
+
+        sc.m.attached = False
+        self.run_until(sc, scanner.WAITING)
+        entry = self.logged()[-1]
+        self.assertEqual((entry["case_serial"], entry["custom_name"]), ("UNREADABLE", "Garage pack 3"))
+
+    def test_name_given_after_the_read_is_saved(self):
+        sc = self._read_with(make_pack(self.clock), lambda sc: sc.set_sticker("?"))
+        sc.set_name("blue tape")
+        saved = json.loads(next((self.data / "captures").glob("pack_*_full.json")).read_text())
+        self.assertEqual(saved["custom_name"], "blue tape")
+
+    def test_typing_a_real_sticker_clears_the_name(self):
+        sc = self._read_with(make_pack(self.clock),
+                             lambda sc: (sc.set_sticker("?"), sc.set_name("blue tape")))
+        sc.set_sticker("ABCD1234 180828 7654321")
+        saved = json.loads(next((self.data / "captures").glob("pack_*_full.json")).read_text())
+        self.assertIsNone(saved["custom_name"])
+        self.assertIsNone(sc.state["view"]["identity"]["name"])
+
+    def test_name_is_kept_for_a_reseat_after_a_dropped_read(self):
+        sc = self._read_with(make_pack(self.clock, fail_after=60),
+                             lambda sc: (sc.set_sticker("?"), sc.set_name("blue tape")))
+        self.assertEqual(sc.state["view"]["verdict"]["result"], runner.DROPPED)
+        self.assertEqual((sc.retry_sticker, sc.retry_name), ("UNREADABLE", "blue tape"))
+
     def test_will_not_close_with_a_battery_attached(self):
         pack = make_pack(self.clock)
         sc = self.make(pack)

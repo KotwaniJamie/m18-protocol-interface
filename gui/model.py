@@ -363,6 +363,7 @@ def identity(doc):
     desc, _ = _field(h, "battery_description")
     return {
         "sticker": doc.get("case_serial") or None,
+        "name": doc.get("custom_name") or None,   # the user's own name, when the sticker is worn off
         "serial": doc.get("e_serial"),
         "type": doc.get("battery_type"),
         "model": desc,

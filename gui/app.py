@@ -47,6 +47,9 @@ class Api:
     def set_sticker(self, text):
         return self._scanner.set_sticker(text)
 
+    def set_name(self, text):
+        return self._scanner.set_name(text)
+
     def accept_adapter(self, device):
         self._scanner.accept_adapter(device)
 

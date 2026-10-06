@@ -20,6 +20,7 @@ let showAll = false;      // "Show all readings" open
 let noLogoHelp = false;   // "nothing's happening?" screen open
 let hiddenChips = new Set();
 let stickerTimer = null;
+let nameTimer = null;
 
 const PILL = {
   no_adapter:      ["NO ADAPTER CONNECTED", "warn"],
@@ -70,7 +71,8 @@ function render(s) {
   const view = s.opened ? s.opened.view : s.view;
   const key = JSON.stringify([s.opened && s.opened.file, s.phase, noLogoHelp, showAll, [...hiddenChips],
     s.phase === "confirm_adapter" ? s.adapter && s.adapter.device : null,
-    view && [view.identity.serial, view.verdict.title], s.removed, s.saved && s.saved.file]);
+    view && [view.identity.serial, view.verdict.title], s.removed, s.saved && s.saved.file,
+    !!(s.sticker && s.sticker.text === "UNREADABLE")]);
   if (key !== shownKey) {
     shownKey = key;
     $("#main").innerHTML = s.opened ? resultScreen(s.opened.view, s, s.opened.file) : screenFor(s, view);
@@ -248,12 +250,25 @@ function reading(s) {
 }
 
 function stickerField(st, label) {
-  const value = st && st.text && st.text !== "UNREADABLE" ? st.text : "";
+  // Worn off: the sticker is recorded as unreadable, and the user gives the
+  // pack a name of their own instead. The name is stored apart from the
+  // sticker, so it is never mistaken for a printed serial.
+  if (st && st.text === "UNREADABLE") {
+    return `<div class="sticker">
+      <span class="lbl">Sticker: worn off</span>
+      <label for="pack-name">Name it something you'll recognise:</label>
+      <div class="row"><input id="pack-name" class="free" autocomplete="off" maxlength="60"
+        placeholder="e.g. Garage pack 3, blue tape" value="${esc(st.name || "")}"></div>
+      <button type="button" class="hint" id="sticker-back">Type the sticker after all</button>
+      <div class="msg" id="sticker-status"></div>
+    </div>`;
+  }
+  const value = st && st.text ? st.text : "";
   return `<div class="sticker">
     <label for="sticker">${esc(label)}</label>
     <div class="row">
       <input id="sticker" autocomplete="off" spellcheck="false" placeholder="ABCD1234 180720 7654323" value="${esc(value)}">
-      <button type="button" class="btn" id="no-sticker">Can't read it</button>
+      <button type="button" class="btn" id="worn-off">Sticker worn off</button>
     </div>
     <div class="msg" id="sticker-status"></div>
   </div>`;
@@ -263,7 +278,7 @@ function stickerStatus(st) {
   const el = $("#sticker-status");
   if (!el) return;
   let msg = "", warn = false;
-  if (st && st.text === "UNREADABLE") msg = "Sticker recorded as unreadable.";
+  if (st && st.text === "UNREADABLE") msg = st.name ? "Saved." : "";
   else if (st && st.date_ok === false) { msg = `Check the sticker: ${st.date_message}. Is it the right battery?`; warn = true; }
   else if (st && st.problem) { msg = `Saved as typed. Unusual format: ${st.problem}.`; warn = true; }
   else if (st && st.date_ok) msg = "Sticker matches the battery's build date.";
@@ -295,7 +310,8 @@ function resultScreen(v, s, openedFile) {
   }
   if (live) readout += stickerField(s.sticker, "Sticker:");
   const who = [];
-  if (!live && id.sticker) who.push(`<span>Sticker: <span class="num">${esc(id.sticker === "UNREADABLE" ? "unreadable" : id.sticker)}</span></span>`);
+  if (!live && id.sticker) who.push(`<span>Sticker: <span class="num">${esc(id.sticker === "UNREADABLE" ? "worn off" : id.sticker)}</span></span>`);
+  if (!live && id.name) who.push(`<span>Name: <b>${esc(id.name)}</b></span>`);
   if (id.serial) who.push(`<span>Serial: <span class="num">${esc(id.serial)}</span></span>`);
   if (id.model) who.push(`<span>${esc(id.model)}</span>`);
   if (who.length) readout += `<div class="who">${who.join("")}</div>`;
@@ -386,6 +402,14 @@ function wire(s) {
     input.oninput = () => { clearTimeout(stickerTimer); stickerTimer = setTimeout(send, 500); };
     input.onblur = send;
     input.onkeydown = (e) => { if (e.key === "Enter") input.blur(); };
-    on("no-sticker", async () => { input.value = ""; await api.set_sticker("?"); });
+    on("worn-off", async () => { clearTimeout(stickerTimer); await api.set_sticker("?"); });
+  }
+  const nameInput = $("#pack-name");
+  if (nameInput) {
+    const sendName = () => api.set_name(nameInput.value);
+    nameInput.oninput = () => { clearTimeout(nameTimer); nameTimer = setTimeout(sendName, 500); };
+    nameInput.onblur = sendName;
+    nameInput.onkeydown = (e) => { if (e.key === "Enter") nameInput.blur(); };
+    on("sticker-back", async () => { clearTimeout(nameTimer); await api.set_name(""); await api.set_sticker(""); });
   }
 }
