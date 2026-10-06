@@ -18,6 +18,9 @@ let last = null;          // last state from the scanner
 let shownKey = null;      // what the main area is currently drawn for
 let showAll = false;      // "Show all readings" open
 let noLogoHelp = false;   // "nothing's happening?" screen open
+let page = "live";        // "live" or "saved" (the saved-scans page)
+let catalogue = null;     // the saved-scans list, from api.list_scans()
+let expanded = new Set(); // batteries dropped open on that page
 let hiddenChips = new Set();
 // The sticker and the worn-off name are saved explicitly (Save button or
 // Enter). Until then the typed text is a draft, kept here so it survives the
@@ -42,9 +45,9 @@ async function tick() {
     const s = await api.state();
     if (!last || s.version !== last.version || s.opened !== last.opened) {
       // A battery being plugged in takes over from a saved scan.
-      if (s.phase === "reading" && last && last.phase !== "reading" && s.opened) {
-        await api.close_scan();
-        s.opened = null;
+      if (s.phase === "reading" && last && last.phase !== "reading") {
+        if (s.opened) { await api.close_scan(); s.opened = null; }
+        page = "live";
       }
       if (s.phase !== "waiting") noLogoHelp = false;
       if (s.phase === "reading" && (!last || last.phase !== "reading")) {
@@ -62,7 +65,7 @@ async function tick() {
 
 function start() {
   api = window.pywebview.api;
-  $("#open-btn").onclick = async () => { await api.open_scan(); last = null; };
+  $("#open-btn").onclick = () => showSaved();
   tick();
 }
 if (window.pywebview && window.pywebview.api) start();
@@ -76,13 +79,15 @@ function render(s) {
   $("#pill").className = "safe " + cls;
 
   const view = s.opened ? s.opened.view : s.view;
-  const key = JSON.stringify([s.opened && s.opened.file, s.phase, noLogoHelp, showAll, [...hiddenChips],
+  const key = JSON.stringify([s.opened && s.opened.file, page, catalogue && catalogue.length, [...expanded],
+    s.phase, noLogoHelp, showAll, [...hiddenChips],
     s.phase === "confirm_adapter" ? s.adapter && s.adapter.device : null,
     view && [view.identity.serial, view.verdict.title], s.removed, s.saved && s.saved.file,
     s.sticker && s.sticker.text, s.sticker && s.sticker.name, editingSticker, editingName]);
   if (key !== shownKey) {
     shownKey = key;
-    $("#main").innerHTML = s.opened ? resultScreen(s.opened.view, s, s.opened.file) : screenFor(s, view);
+    $("#main").innerHTML = s.opened ? resultScreen(s.opened.view, s, s.opened.file)
+      : page === "saved" ? savedPage() : screenFor(s, view);
     wire(s);
   }
   // Parts that change while the screen stays put.
@@ -327,7 +332,9 @@ function resultScreen(v, s, openedFile) {
   const live = !openedFile && !s.removed && d.result !== "DROPPED";
 
   let notice = "";
-  if (openedFile) notice = `<div class="notice"><span class="lbl">Saved scan: ${esc(openedFile)}</span><span class="spacer"></span>
+  if (openedFile) notice = `<div class="notice"><span class="lbl">Saved scan · ${esc(id.captured || "")}${id.time ? ", " + esc(id.time) : ""}</span>
+      <span class="spacer"></span>
+      <button type="button" class="hint" id="back-saved">Back to saved scans</button>
       <button type="button" class="hint" id="close-scan">Back to live</button></div>`;
   else if (s.removed) notice = `<div class="notice"><span class="lbl">Battery removed · plug in the next one</span></div>`;
 
@@ -395,6 +402,69 @@ function readingsPanel(r) {
   return h + `</div>`;
 }
 
+// --- the saved-scans page ----------------------------------------------------------------
+
+async function showSaved() {
+  if (last && last.opened) await api.close_scan();
+  catalogue = await api.list_scans();
+  page = "saved"; showAll = false;
+  last = null;            // pick up the closed scan on the next poll
+}
+
+const CHEVRON = `<svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true"><path d="M3 4.5l3 3 3-3" fill="none"
+  stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+
+function whoOf(b) {
+  const bits = [];
+  if (b.sticker) bits.push(`Sticker: <span class="num">${esc(b.sticker)}</span>`);
+  else if (b.worn) bits.push(`Sticker: <span class="num">worn off</span>`);
+  if (b.name) bits.push(`Name: <b>${esc(b.name)}</b>`);
+  if (b.model) bits.push(esc(b.model));
+  return bits.join(`<span class="sep">·</span>`);
+}
+
+function deltaV(mv) {
+  return mv === null || mv === undefined ? `<span class="blank">blank</span>` : `ΔV <span class="num">${esc(mv)} mV</span>`;
+}
+
+function savedPage() {
+  const cat = catalogue || [];
+  const scans = cat.reduce((n, b) => n + b.scans.length, 0);
+  let h = `<div class="notice"><span class="lbl">Saved scans · ${cat.length} batter${cat.length === 1 ? "y" : "ies"} · ${scans} scan${scans === 1 ? "" : "s"}</span>
+    <span class="spacer"></span><button type="button" class="hint" id="back-live">Back to live</button></div>`;
+  if (!cat.length) {
+    return h + `<div class="readout full"><span class="status wait">Nothing saved yet</span>
+      <h2 class="vword">No saved scans</h2>
+      <p class="vtext">Plug in a battery and it's saved here automatically, with the date and time of every scan.</p></div>`;
+  }
+  h += `<div class="saved full">` + cat.map((b) => {
+    const key = String(b.e_serial);
+    const open = expanded.has(key);
+    const l = b.latest;
+    let row = `<div class="bat${open ? " open" : ""}">
+      <button type="button" class="bat-head" data-es="${esc(key)}" aria-expanded="${open}">
+        <span class="bat-id"><span class="bat-serial">Serial: <span class="num">${esc(b.e_serial ?? "unknown")}</span></span>
+          <span class="bat-who">${whoOf(b)}</span></span>
+        <span class="bat-latest"><span class="status ${esc(l.state)}">${chipText(l.status)}</span>
+          <span class="bat-dv">${deltaV(l.imbalance_mv)}</span>
+          <span class="bat-count">${b.scans.length} scan${b.scans.length === 1 ? "" : "s"}</span>
+          <span class="chev">${CHEVRON}</span></span>
+      </button>`;
+    if (open) {
+      row += `<div class="scans">` + b.scans.map((s) => `
+        <button type="button" class="scan-row" data-file="${esc(s.file)}">
+          <span class="scan-when num">${esc(s.date || "date unknown")}${s.time ? `<b>${esc(s.time)}</b>` : ""}</span>
+          <span class="scan-verdict"><span class="status ${esc(s.state)}">${chipText(s.status)}</span> ${esc(s.title)}</span>
+          <span class="bat-dv">${deltaV(s.imbalance_mv)}</span>
+          <span class="scan-go">View</span>
+        </button>`).join("") + `</div>`;
+    }
+    return row + `</div>`;
+  }).join("") + `</div>`;
+  return h + `<div class="foot"><span>Read from the saved scan files. Nothing here touches the battery.</span>
+    <button type="button" class="hint" id="open-file">Open a scan file from elsewhere…</button></div>`;
+}
+
 // --- dialogs ---------------------------------------------------------------------------
 
 function closingModal() {
@@ -418,7 +488,16 @@ function wire(s) {
   on("accept-adapter", () => api.accept_adapter(s.adapter.device));
   on("nothing", () => { noLogoHelp = true; redraw(); });
   on("nothing-back", () => { noLogoHelp = false; redraw(); });
-  on("close-scan", async () => { await api.close_scan(); last = null; });
+  on("close-scan", async () => { await api.close_scan(); page = "live"; last = null; });
+  on("back-saved", () => showSaved());
+  on("back-live", () => { page = "live"; redraw(); });
+  on("open-file", async () => { await api.open_scan(); page = "live"; last = null; });
+  document.querySelectorAll(".bat-head").forEach((b) => {
+    b.onclick = () => { const k = b.dataset.es; expanded.has(k) ? expanded.delete(k) : expanded.add(k); redraw(); };
+  });
+  document.querySelectorAll(".scan-row").forEach((b) => {
+    b.onclick = async () => { await api.open_saved(b.dataset.file); last = null; };
+  });
   on("toggle-all", () => { showAll = !showAll; redraw(); });
   document.querySelectorAll(".chipkey [data-chip]").forEach((b) => {
     b.onclick = () => {

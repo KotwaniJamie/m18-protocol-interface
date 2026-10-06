@@ -71,6 +71,38 @@ class Api:
     def close_scan(self):
         self._opened = None
 
+    # -- the saved-scans page (reads files only; never touches the port) --
+    def list_scans(self):
+        return model.catalogue(load_all(self._scanner.captures))
+
+    def open_saved(self, name):
+        path = capture_path(self._scanner.captures, name)
+        if path is None:
+            return None
+        self._opened = load_scan(path, self._scanner.captures)
+        return self._opened
+
+
+def capture_path(captures_dir, name):
+    """The saved scan called `name`, only if it really is one in the captures
+    folder. The page sends a bare file name; anything else is refused."""
+    name = str(name or "")
+    if "/" in name or "\\" in name or not (name.startswith("pack_") and name.endswith(".json")):
+        return None
+    path = pathlib.Path(captures_dir) / name
+    return path if path.is_file() else None
+
+
+def load_all(captures_dir):
+    """(file name, document) for every full capture, skipping unreadable files."""
+    out = []
+    for p in sorted(pathlib.Path(captures_dir).glob("pack_*_full*.json")):
+        try:
+            out.append((p.name, json.loads(p.read_text())))
+        except (OSError, ValueError):
+            pass
+    return out
+
 
 def load_scan(path, captures_dir):
     path = pathlib.Path(path)

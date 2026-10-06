@@ -165,6 +165,58 @@ class TestHistory(Timing):
         self.assertEqual([p["when"][:10] for p in pts], ["2026-09-04", "2026-09-28"])
 
 
+class TestSavedScans(Timing):
+    """The saved-scans page: every battery, its scans, newest first."""
+
+    def doc(self, es, when, sticker="", name=None, cells=None):
+        d = as_loaded(capture(make_pack(self.clock, cells=cells or cells_mv(3900, 3902, 3898, 3901, 3900))))
+        d.update(e_serial=es, captured_at=when, case_serial=sticker)
+        if name:
+            d["custom_name"] = name
+        return d
+
+    def test_grouped_by_battery_newest_first(self):
+        saved = [
+            ("pack_1_full.json", self.doc(1, "2026-09-04T10:00:00", "ABCD1234 180828 7654321")),
+            ("pack_2_full.json", self.doc(2, "2026-09-28T10:00:00")),
+            ("pack_1_full_20261006-170000.json", self.doc(1, "2026-10-06T17:00:00")),
+        ]
+        cat = model.catalogue(saved)
+        self.assertEqual([b["e_serial"] for b in cat], [1, 2])            # most recently scanned first
+        self.assertEqual([s["file"] for s in cat[0]["scans"]],
+                         ["pack_1_full_20261006-170000.json", "pack_1_full.json"])
+        self.assertEqual(cat[0]["latest"]["time"], "17:00")
+        # The re-scan left the sticker empty; the one typed earlier still identifies the pack.
+        self.assertEqual(cat[0]["sticker"], "ABCD1234 180828 7654321")
+
+    def test_each_scan_keeps_its_own_verdict(self):
+        saved = [("a.json", self.doc(1, "2026-09-04T10:00:00", cells=cells_mv(3900, 3967, 3900, 3900, 3900))),
+                 ("b.json", self.doc(1, "2026-10-06T10:00:00"))]
+        scans = model.catalogue(saved)[0]["scans"]
+        self.assertEqual([(s["title"], s["imbalance_mv"]) for s in scans],
+                         [("Good to use", 4), ("Needs balancing", 67)])
+
+    def test_worn_off_name_is_shown(self):
+        cat = model.catalogue([("a.json", self.doc(1, "2026-10-06T10:00:00", "UNREADABLE", "Garage pack 3"))])
+        self.assertEqual((cat[0]["sticker"], cat[0]["name"], cat[0]["worn"]), (None, "Garage pack 3", True))
+
+    def test_only_files_in_the_captures_folder_open(self):
+        import app
+        with tempfile.TemporaryDirectory() as d:
+            (pathlib.Path(d) / "pack_1_full.json").write_text("{}")
+            self.assertIsNotNone(app.capture_path(d, "pack_1_full.json"))
+            for bad in ("../pack_1_full.json", "/etc/passwd", "pack_1_full.json/..", "index.jsonl",
+                        "..\\pack_1_full.json", "", None, "pack_9_full.json"):
+                self.assertIsNone(app.capture_path(d, bad), bad)
+
+    def test_unreadable_files_are_skipped(self):
+        import app
+        with tempfile.TemporaryDirectory() as d:
+            (pathlib.Path(d) / "pack_1_full.json").write_text(json.dumps(self.doc(1, "2026-10-06T10:00:00")))
+            (pathlib.Path(d) / "pack_2_full.json").write_text("{not json")
+            self.assertEqual([n for n, _ in app.load_all(d)], ["pack_1_full.json"])
+
+
 class TestAdapters(unittest.TestCase):
     class Port:
         def __init__(self, device, vid, pid, description="USB"):

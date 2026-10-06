@@ -368,7 +368,63 @@ def identity(doc):
         "type": doc.get("battery_type"),
         "model": desc,
         "captured": _long_date(doc.get("captured_at")),
+        "time": _time(doc.get("captured_at")),
     }
+
+
+def _time(v):
+    d = _date(v)
+    return f"{d:%H:%M}" if d else None
+
+
+# --- the saved-scans page ------------------------------------------------------
+
+def scan_summary(doc, file):
+    """One saved scan, as a row on the saved-scans page."""
+    v = verdict(doc)
+    imbal, ok = _field(doc.get("health"), "cell_imbalance_mv")
+    when = _date(doc.get("captured_at"))
+    return {
+        "file": file,
+        "when": when.isoformat() if when else "",
+        "date": _long_date(when),
+        "time": _time(when),
+        "state": v["state"], "status": v["status"], "title": v["title"],
+        "imbalance_mv": imbal if ok else None,
+        "sticker": doc.get("case_serial") or None,
+        "name": doc.get("custom_name") or None,
+    }
+
+
+def catalogue(saved):
+    """Every recorded battery, each with its scans, newest first.
+
+    `saved` is (file name, capture document) pairs. Batteries are grouped by
+    e-serial and ordered by their most recent scan, so the pack you just read
+    is at the top. A battery's sticker and name come from its most recent
+    scan that has one: a later re-scan with the field left empty shouldn't
+    hide what was typed before.
+    """
+    groups = {}
+    for file, doc in saved:
+        groups.setdefault(doc.get("e_serial"), []).append((scan_summary(doc, file), doc))
+    out = []
+    for es, rows in groups.items():
+        rows.sort(key=lambda r: r[0]["when"], reverse=True)
+        scans = [s for s, _ in rows]
+        real = lambda s: s["sticker"] if s["sticker"] and s["sticker"] != "UNREADABLE" else None
+        desc, _ = _field(rows[0][1].get("health"), "battery_description")
+        out.append({
+            "e_serial": es,
+            "model": desc,
+            "sticker": next((real(s) for s in scans if real(s)), None),
+            "worn": any(s["sticker"] == "UNREADABLE" for s in scans[:1]),
+            "name": next((s["name"] for s in scans if s["name"]), None),
+            "latest": scans[0],
+            "scans": scans,
+        })
+    out.sort(key=lambda b: b["latest"]["when"], reverse=True)
+    return out
 
 
 def history(captures, e_serial):
